@@ -259,3 +259,34 @@
   flex-direction: column;
   gap: 10px;
 }
+
+/* 全局默认开关：靠右与状态指示分开，颜色仍走语义令牌。 */
+.dsm-default-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  user-select: none;
+}
+
+.dsm-default-toggle input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.dsm-default-toggle:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 总开关与逐模型设置的关系说明，紧跟在状态行下方。 */
+.dsm-hub-hint {
+  margin: 0 0 12px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}

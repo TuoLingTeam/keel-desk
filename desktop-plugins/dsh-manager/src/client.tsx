@@ -65,15 +65,17 @@ function ColdBrewToggle({ sessionId, session, directory }: ColdBrewToggleProps) 
   const profileId = matchProfileId(model)
   const profileLabel = PROFILE_LABELS[profileId] ?? profileId
 
-  // 挂载时读取该会话已持久化的开关状态。
+  // 挂载时读取该会话已持久化的开关状态。新会话没有记录，后端会按
+  // 「新会话默认开启」以及当前模型命中的 profile 决定初值，所以要把 model 带上。
   useEffect(() => {
     let alive = true
-    fetch(`/api/coldbrew/session/${encodeURIComponent(sessionId)}`)
+    const query = model === '' ? '' : `?model=${encodeURIComponent(model)}`
+    fetch(`/api/coldbrew/session/${encodeURIComponent(sessionId)}${query}`)
       .then(res => res.json())
       .then(data => { if (alive) setEnabled(data.enabled === true) })
       .catch(() => { if (alive) setEnabled(false) })
     return () => { alive = false }
-  }, [sessionId])
+  }, [sessionId, model])
 
   const toggle = async (next: boolean) => {
     if (!newSession || busy) return
@@ -134,6 +136,10 @@ interface ColdBrewProfile {
 function ManagerSection() {
   const [profiles, setProfiles] = useState<ColdBrewProfile[] | null>(null)
   const [status, setStatus] = useState({ installed: false, enabled: false, isRunning: false })
+  // 后端是否在线，与 status.isRunning 是两回事：后者只表示有没有安装/卸载任务在跑。
+  const [online, setOnline] = useState<boolean | null>(null)
+  // 全局开关：新会话的输入框是否一进来就开着破甲。
+  const [defaultOn, setDefaultOn] = useState(false)
   const [logs, setLogs] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -178,14 +184,18 @@ function ManagerSection() {
       ])
       const profilesData = await profilesRes.json()
       setProfiles(profilesData.profiles ?? [])
+      setDefaultOn(profilesData.defaultEnabled === true)
       const statusData = await statusRes.json()
       setStatus(statusData)
+      // 这两个接口答上来，本身就证明后端在线——它就是提供这些接口的那个进程。
+      setOnline(true)
       if (statusData.isRunning) {
         setBusy(true)
         startPolling()
       }
     } catch (error) {
       console.error('Failed to fetch status', error)
+      setOnline(false)
     } finally {
       setLoading(false)
     }
@@ -195,6 +205,23 @@ function ManagerSection() {
     refresh()
     return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
   }, [refresh])
+
+  const toggleGlobalDefault = async (next: boolean) => {
+    // 先乐观切换，失败再回滚，避免开关跟手感差。
+    setDefaultOn(next)
+    try {
+      const res = await fetch('/api/coldbrew/default', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      showToast(next ? '新会话将默认开启破甲' : '新会话将默认关闭破甲')
+    } catch (error: any) {
+      setDefaultOn(!next)
+      showToast(`设置失败: ${error.message}`)
+    }
+  }
 
   const setProfileDefault = async (profileId: string, defaultEnabled: boolean) => {
     try {
@@ -258,14 +285,41 @@ function ManagerSection() {
       <div className="dsm-hub">
         <div className="dsm-hub-head">
           <span className="dsm-state">
-            <StateDot state={status.isRunning ? 'done' : 'warning'} size={8} />
-            后端 {status.isRunning ? '运行中' : '未运行'}
+            <StateDot
+              state={online === null ? 'warning' : online ? 'done' : 'error'}
+              size={8}
+            />
+            后端 {online === null ? '检查中…' : online ? '运行中' : '连接失败'}
           </span>
+          {busy && (
+            <span className="dsm-state">
+              <StateDot state="ongoing" size={8} />
+              任务执行中
+            </span>
+          )}
+
+          <label className="dsm-default-toggle">
+            <input
+              type="checkbox"
+              checked={defaultOn}
+              onChange={(event) => { void toggleGlobalDefault(event.target.checked) }}
+            />
+            <span>所有新会话默认开启破甲</span>
+          </label>
         </div>
+
+        <p className="dsm-hub-hint">
+          {defaultOn
+            ? '所有新会话都会自动开启破甲，下面的单独设置暂时不起作用。'
+            : '下面可以按模型单独设置：只有新会话用到该模型时，才自动开启破甲。'}
+        </p>
 
         <div className="dsm-list">
           {(profiles ?? []).map(profile => {
-            const state: 'done' | 'warning' = profile.defaultEnabled ? 'done' : 'warning'
+            // 总开关一旦打开，逐模型设置就被它盖过去了——如实说明，
+            // 否则会出现「总开关已开、这里却写着默认关闭」这种自相矛盾的显示。
+            const effective = defaultOn || profile.defaultEnabled
+            const state: 'done' | 'warning' = effective ? 'done' : 'warning'
             return (
               <article className="dsm-card" key={profile.id}>
                 <div className="dsm-card-main">
@@ -278,16 +332,21 @@ function ManagerSection() {
                 <div className="dsm-card-side">
                   <span className="dsm-state">
                     <StateDot state={state} size={8} />
-                    {profile.defaultEnabled ? '新会话默认开启' : '默认关闭'}
+                    {defaultOn
+                      ? '已由总开关开启'
+                      : profile.defaultEnabled
+                        ? '用此模型时默认开启'
+                        : '用此模型时不自动开启'}
                   </span>
                   <div className="dsm-actions">
                     <Button
                       onClick={() => void setProfileDefault(profile.id, !profile.defaultEnabled)}
-                      disabled={busy}
-                      variant="primary"
+                      disabled={busy || defaultOn}
+                      variant={profile.defaultEnabled ? 'outline' : 'primary'}
                       size="sm"
+                      title={defaultOn ? '总开关已开启，逐模型设置暂不生效' : undefined}
                     >
-                      {profile.defaultEnabled ? '取消默认' : '设为默认'}
+                      {profile.defaultEnabled ? '取消默认开启' : '设为默认开启'}
                     </Button>
                   </div>
                 </div>

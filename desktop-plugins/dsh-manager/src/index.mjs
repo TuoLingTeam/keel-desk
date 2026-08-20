@@ -277,6 +277,8 @@ export function apply(ctx) {
           const settings = await getSettings()
           res.writeHead(200, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({
+            // 全局开关：新会话是否一进来就开着破甲，省去每次手动打开。
+            defaultEnabled: settings.coldbrew?.defaultEnabled === true,
             profiles: Object.values(PROFILES).map(p => ({
               id: p.id,
               name: p.name,
@@ -290,7 +292,15 @@ export function apply(ctx) {
         if (action === 'session') {
           const sessionId = decodeURIComponent(segments[3] ?? '')
           const sessions = await getColdbrewSessions()
-          const state = sessions[String(sessionId)] ?? { enabled: false, model: '' }
+          // 还没有记录的会话（也就是新会话）取默认值：全局开关优先，其次看
+          // 当前模型命中的那个 profile 是否被设成「新会话默认开启」。
+          const settings = await getSettings()
+          const model = url.searchParams.get('model') ?? ''
+          const matched = matchProfileId(model)
+          const defaultEnabled = settings.coldbrew?.defaultEnabled === true
+            || (matched !== null
+              && settings.coldbrew?.profiles?.[matched]?.defaultEnabled === true)
+          const state = sessions[String(sessionId)] ?? { enabled: defaultEnabled, model }
           res.writeHead(200, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({
             ...state,
@@ -304,6 +314,19 @@ export function apply(ctx) {
       }
 
       if (req.method === 'POST') {
+        if (action === 'default') {
+          let body = ''
+          for await (const chunk of req) body += chunk
+          let payload = {}
+          try { payload = JSON.parse(body) } catch { /* tolerate empty body */ }
+          const settings = await getSettings()
+          settings.coldbrew ??= {}
+          settings.coldbrew.defaultEnabled = payload.enabled === true
+          await saveSettings(settings)
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ defaultEnabled: payload.enabled === true }))
+          return
+        }
         if (action === 'profile') {
           const profileId = decodeURIComponent(segments[3] ?? '')
           if (PROFILES[profileId] === undefined) {
