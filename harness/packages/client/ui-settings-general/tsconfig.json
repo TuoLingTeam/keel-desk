@@ -40,6 +40,9 @@
     },
     {
       "path": "../ui-sidebar"
+    },
+    {
+      "path": "../ui-theme"
     }
   ]
 }

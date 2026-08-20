@@ -119,6 +119,7 @@
     { "path": "./packages/util/brand" },
     { "path": "./packages/util/launch-environment" },
     { "path": "./packages/util/native-command" },
+    { "path": "./packages/util/image-ocr" },
     { "path": "./packages/util/home-paths" },
     { "path": "./packages/util/timeout" },
     { "path": "./packages/util/output-retention" },

@@ -1,0 +1,21 @@
+{
+  "name": "@deepseek-ai/dsh-desktop-manager",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./lib/index.mjs",
+  "exports": {
+    ".": "./lib/index.mjs",
+    "./client": "./lib/client.js"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": ["slots", "locale", "connection", "modelDirectories"],
+      "immediately": true
+    }
+  },
+  "files": [
+    "lib"
+  ]
+}

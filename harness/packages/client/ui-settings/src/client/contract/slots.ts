@@ -22,6 +22,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      */
     'settings.trigger': { kind: 'single'; scope: 'root'; owner: SettingsTriggerOwnerProps }
     /**
+     * Optional controls sharing the sidebar-foot row with Settings, rendered
+     * to its right when wide and stacked beneath it on the rail. The shell
+     * supplies only the ordered render site and the column state; a registrant
+     * draws its own button, copy, and behavior. Options: `id` (control key),
+     * `order` (position). Distinct from `sidebar.footer.action`, which seats
+     * actions on their own line above the Settings row.
+     */
+    'settings.trigger.action': { kind: 'list'; scope: 'root'; owner: SettingsTriggerOwnerProps }
+    /**
      * The panel title text seat. Content renders inside the nav heading row;
      * the dialog's accessible name points at that node via aria-labelledby.
      * Absent contribution leaves the heading empty.

@@ -20,6 +20,9 @@ import { launchEnvironmentOf, type LaunchEnvironmentSnapshot } from '@deepseek-a
 import { deepEqualJson, installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
+import { createImageOcr, describeImageForModel } from '@deepseek-ai/dsh-image-ocr'
+// Type-only: pulls the ctx.attachments Context merge into this program.
+import type {} from '@deepseek-ai/dsh-attachment'
 import {
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_MAX_TOKENS,
@@ -247,7 +250,26 @@ export function apply(ctx: Context, config: Config): void {
 
   let userId: AnonymousUserId | undefined
   const resolveUserId = (): AnonymousUserId => userId ??= getOrCreateAnonymousUserId()
-  const adapter = new DeepSeekAdapter({ options, resolveApiKey, resolveUserId })
+  // One recogniser per plugin instance so its digest cache spans the whole
+  // session: the same screenshot replayed through conversation history is
+  // recognised once, not once per request.
+  const ocr = createImageOcr()
+  // Composition-conditional: without a durable attachment store there are no
+  // image bytes to read, so the route stays text-only and declares as much.
+  const resolveImageText = () => {
+    const attachments = ctx.get('attachments')
+    if (attachments === undefined) return undefined
+    return async (block: { attachment: Parameters<typeof attachments.readImage>[0] }, signal?: AbortSignal) => {
+      const stored = await attachments.readImage(block.attachment, signal)
+      const outcome = await ocr.recognize({
+        data: stored.data,
+        mediaType: stored.ref.mediaType,
+        ...signal === undefined ? {} : { signal },
+      })
+      return describeImageForModel(outcome, block.attachment.name)
+    }
+  }
+  const adapter = new DeepSeekAdapter({ options, resolveApiKey, resolveUserId, resolveImageText })
   ctx.llm.registerConfigurableProviders([
     { provider: PROVIDER, displayName: 'DeepSeek', settingsNs: NS, settingsPath: [] },
   ])

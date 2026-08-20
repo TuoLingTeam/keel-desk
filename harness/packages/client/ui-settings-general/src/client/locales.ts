@@ -8,6 +8,9 @@ export const zh = {
   'openDocument': '打开配置文件',
   'openDocument.error': '无法打开配置文件',
   'general.nav': '通用设置',
+  'theme': '主题',
+  'theme.toLight': '切换到浅色主题',
+  'theme.toDark': '切换到深色主题',
 } satisfies Record<string, string>
 
 /** The settings namespace key union. */
@@ -21,4 +24,7 @@ export const en = {
   'openDocument': 'Open configuration file',
   'openDocument.error': 'Could not open configuration file',
   'general.nav': 'General',
+  'theme': 'Theme',
+  'theme.toLight': 'Switch to the light theme',
+  'theme.toDark': 'Switch to the dark theme',
 } satisfies Record<SettingsKey, string>

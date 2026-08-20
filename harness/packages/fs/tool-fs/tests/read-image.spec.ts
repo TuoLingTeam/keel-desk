@@ -268,12 +268,18 @@ describe('strict image-modality gate', () => {
     ['a text-only model', 'text-model'],
     ['a model without declared modalities', 'legacy-model'],
     ['a model absent from the catalog', 'unknown-model'],
-  ])('refuses on %s', async (_label, model) => {
+  ])('substitutes recognised text instead of an image block on %s', async (_label, model) => {
     await writeFile(join(dir, 'red.png'), PNG_1X1)
     const ctx = await setup()
     const result = await readImage(ctx, { file_path: 'red.png' }, agentOn(model))
-    expect(result.isError).toBe(true)
-    expect(text(result)).toContain('does not declare image input')
+
+    // The read succeeds; only the shape of what reaches the model changes.
+    expect(result.isError).toBe(false)
+    expect(result.content.some(block => block.type === 'image')).toBe(false)
+    // A 1x1 red pixel carries no text, so the OCR branch still says something
+    // explicit rather than dropping the image silently.
+    expect(text(result)).toContain('red.png')
+    expect(text(result)).toMatch(/no text|OCR|not installed/)
   })
 
   it('refuses when the route cannot be resolved (no agent, or no header and no options)', async () => {

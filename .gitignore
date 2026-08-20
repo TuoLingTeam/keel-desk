@@ -9,3 +9,5 @@ src-tauri/target-link-fix/
 .tmp-*/
 *.local
 *.log
+desktop-settings.json
+coldbrew-sessions.json

@@ -12,7 +12,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { constants as fsConstants, statSync } from "node:fs";
+import { constants as fsConstants, existsSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,6 +39,18 @@ const bundledPlugins = [
     packageName: "dsh-model-capability",
     root: "plugins",
     directory: "dsh-model-capabilities",
+  },
+  {
+    id: "dsh-desktop-manager",
+    packageName: "@deepseek-ai/dsh-desktop-manager",
+    root: "desktop-plugins",
+    directory: "dsh-manager",
+  },
+  {
+    id: "dsh-infinite-gen-1",
+    packageName: "dsh-infinite-gen-1",
+    root: "plugins",
+    directory: "dsh-infinite-gen-1",
   },
 ].map((plugin) => ({
   ...plugin,
@@ -164,12 +176,22 @@ async function stageBundledPlugins() {
   const runtimeManifest = JSON.parse(await readFile(runtimeManifestPath, "utf8"));
   runtimeManifest.dependencies ??= {};
   for (const plugin of bundledPlugins) {
-    await mkdir(join(plugin.staged, "lib"), { recursive: true });
+    await mkdir(plugin.staged, { recursive: true });
     await copyFile(join(plugin.source, "package.json"), join(plugin.staged, "package.json"));
-    await cp(join(plugin.source, "lib"), join(plugin.staged, "lib"), {
-      recursive: true,
-      dereference: true,
-    });
+    // Built plugins ship a `lib/`; hand-written ones (a bare index.js plus its
+    // assets) have none, so stage the whole source tree for those instead of
+    // failing on a directory that was never meant to exist.
+    const built = join(plugin.source, "lib");
+    if (existsSync(built)) {
+      await mkdir(join(plugin.staged, "lib"), { recursive: true });
+      await cp(built, join(plugin.staged, "lib"), { recursive: true, dereference: true });
+    } else {
+      await cp(plugin.source, plugin.staged, {
+        recursive: true,
+        dereference: true,
+        filter: (entry) => !/[\\/](node_modules|\.git)$/.test(entry),
+      });
+    }
     for (const filename of ["cordis.patch.yml", "README.md", "LICENSE"]) {
       const source = join(plugin.source, filename);
       try {
@@ -440,13 +462,23 @@ async function terminateChild(child) {
 
 async function smokeRuntime() {
   const smokeOverlay = join(releaseRuntime, "desktop-smoke.patch.yml");
-  const overlayRows = bundledPlugins.map((plugin) => {
-    const packageName = plugin.packageName.replaceAll("'", "''");
-    return `    - id: ${plugin.id}\n      name: '${packageName}'`;
-  }).join("\n");
+  // Must mirror `desktop_overlay_content` in src-tauri/src/harness.rs: the
+  // plugins whose browser half is discovered by desktop-bridge mount by file
+  // URL, and desktop-bridge only collects `file:` entries. Mounting them by
+  // bare name here would smoke-test a composition the app never runs.
+  const FILE_MOUNTED = new Set(["dsh-desktop-manager", "dsh-infinite-gen-1"]);
+  const overlayRows = await Promise.all(bundledPlugins.map(async (plugin) => {
+    let specifier = plugin.packageName;
+    if (FILE_MOUNTED.has(plugin.id)) {
+      const manifest = JSON.parse(await readFile(join(plugin.staged, "package.json"), "utf8"));
+      const entry = manifest.main ?? "index.js";
+      specifier = `file:${join(plugin.staged, entry)}`.replaceAll("\\", "/");
+    }
+    return `    - id: ${plugin.id}\n      name: '${specifier.replaceAll("'", "''")}'`;
+  }));
   await writeFile(
     smokeOverlay,
-    `- insert:\n${overlayRows}\n`,
+    `- insert:\n${overlayRows.join("\n")}\n`,
   );
   const result = await new Promise((resolvePromise, reject) => {
     const child = spawn(
@@ -502,6 +534,21 @@ async function smokeRuntime() {
         }
         if (!body.includes("dsh-model-capability")) {
           throw new Error("Harness smoke manifest is missing the model capabilities bundle.");
+        }
+        if (!body.includes("dsh-desktop-manager")) {
+          throw new Error("Harness smoke manifest is missing the desktop manager bundle.");
+        }
+        // dsh-infinite-gen-1 is a Host-only prompt plugin: its package.json
+        // declares `dsh.bundle` and no `dsh.client`, so it correctly never
+        // appears in the browser boot manifest. Assert it shipped instead.
+        const infiniteGenEntry = join(
+          stagingRoot,
+          "plugins",
+          "dsh-infinite-gen-1",
+          "index.js",
+        );
+        if (!existsSync(infiniteGenEntry)) {
+          throw new Error("Release runtime is missing the infinite generation one plugin.");
         }
         const clientResponse = await fetch(
           `${ready[1]}/plugins/dsh-attachment/client.js`,

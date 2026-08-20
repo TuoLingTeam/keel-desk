@@ -14,6 +14,74 @@
           <span class="titlebar-mark" aria-hidden="true"></span>
           <span data-tauri-drag-region>DeepSeek Harness</span>
         </div>
+        <div class="usage-meter" id="usage-meter" hidden>
+          <button
+            class="usage-summary"
+            id="usage-summary"
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded="false"
+            aria-label="DeepSeek 用量与余额"
+          >
+            <span class="usage-dot" id="usage-dot" aria-hidden="true"></span>
+            <span class="usage-metric"><b id="usage-balance">—</b></span>
+            <span class="usage-metric"><i>今日</i><b id="usage-today-cost">—</b></span>
+            <span class="usage-metric"><i>请求</i><b id="usage-today-requests">—</b></span>
+            <span class="usage-metric"><i>Tok</i><b id="usage-today-tokens">—</b></span>
+            <span class="usage-metric"><i>缓存</i><b id="usage-cache">—</b></span>
+          </button>
+
+          <div class="usage-panel" id="usage-panel" hidden role="dialog" aria-label="DeepSeek 用量明细">
+            <header class="usage-panel-head">
+              <span>DeepSeek 用量</span>
+              <button type="button" id="usage-close" class="usage-icon-button" aria-label="关闭">✕</button>
+            </header>
+
+            <section class="usage-section">
+              <p class="usage-section-title">账户余额</p>
+              <p class="usage-hero" id="usage-hero">—</p>
+              <dl class="usage-rows">
+                <div><dt>充值余额</dt><dd id="usage-topped-up">—</dd></div>
+                <div><dt>赠送余额</dt><dd id="usage-granted">—</dd></div>
+                <div><dt>账户状态</dt><dd id="usage-available">—</dd></div>
+              </dl>
+              <p class="usage-note" id="usage-balance-error" hidden></p>
+            </section>
+
+            <section class="usage-section">
+              <p class="usage-section-title">今日用量（本机统计）</p>
+              <dl class="usage-rows">
+                <div><dt>预估消费</dt><dd id="usage-cost-detail">—</dd></div>
+                <div><dt>请求次数</dt><dd id="usage-requests-detail">—</dd></div>
+                <div><dt>计费 token</dt><dd id="usage-billed-detail">—</dd></div>
+                <div><dt>缓存命中</dt><dd id="usage-cache-detail">—</dd></div>
+                <div><dt>未命中输入</dt><dd id="usage-input-detail">—</dd></div>
+                <div><dt>输出</dt><dd id="usage-output-detail">—</dd></div>
+              </dl>
+              <div class="usage-models" id="usage-models"></div>
+              <p class="usage-note">
+                统计自本机会话日志，只含经由本应用发出的请求，可能略低于控制台数字。
+              </p>
+              <p class="usage-note" id="usage-usage-error" hidden></p>
+            </section>
+
+            <footer class="usage-panel-foot">
+              <label for="usage-interval">刷新间隔</label>
+              <input
+                id="usage-interval"
+                type="number"
+                min="15"
+                max="3600"
+                step="15"
+                inputmode="numeric"
+              />
+              <span class="usage-unit">秒</span>
+              <button type="button" id="usage-refresh" class="usage-button">立即刷新</button>
+            </footer>
+            <p class="usage-stamp" id="usage-stamp"></p>
+          </div>
+        </div>
+
         <div class="window-controls">
           <button class="window-control" id="window-minimize" type="button" aria-label="最小化">
             <svg viewBox="0 0 12 12" aria-hidden="true">

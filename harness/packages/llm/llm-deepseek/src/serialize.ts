@@ -2,13 +2,15 @@
  * Serialize harness messages into DeepSeek chat completions. User text is joined; assistant text
  * becomes `content`, tool calls become `tool_calls`, and tool results become separate tool messages.
  * Assistant reasoning is replayed as `reasoning_content` only on tool-call turns, as required by
- * thinking-mode passback. Core image blocks are rejected explicitly because this wire route is text-only;
- * unknown declaration-merged block types retain the adapter's documented extension fallback.
+ * thinking-mode passback. The wire route itself is text-only, so image blocks are folded into text
+ * upstream by {@link foldImagesToText} when the adapter has an image-text resolver, and rejected
+ * explicitly when it does not; unknown declaration-merged block types retain the adapter's
+ * documented extension fallback.
  * @module dsh-llm-deepseek/serialize
  */
 
 import { contentHasImage, LlmError } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock, GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, GenerateOptions, ImageBlock, Message } from '@deepseek-ai/dsh-llm'
 import type { WireMessage, WireRequest, WireTool } from './types.ts'
 
 /** Adapter-level request defaults (from plugin config). */
@@ -60,11 +62,66 @@ function flattenText(blocks: ContentBlock[]): string {
     .join('')
 }
 
-/** Reject core image content before any text-flattening path can silently erase it. */
+/**
+ * Reject core image content before any text-flattening path can silently erase
+ * it. Reaching this means no image-text resolver was configured: with one,
+ * {@link foldImagesToText} has already replaced every image block upstream.
+ */
 function assertTextOnly(blocks: readonly ContentBlock[]): void {
   if (contentHasImage(blocks)) {
     throw new LlmError('The DeepSeek chat-completions adapter does not support image content.', 'UNSUPPORTED_CONTENT')
   }
+}
+
+/** Produce the text that stands in for one image block on a text-only route. */
+export type ImageTextResolver = (block: ImageBlock, signal?: AbortSignal) => Promise<string>
+
+/** Rewrite one block list, resolving images and recursing into tool results. */
+async function foldBlocks(
+  blocks: readonly ContentBlock[],
+  resolve: ImageTextResolver,
+  signal?: AbortSignal,
+): Promise<ContentBlock[]> {
+  const folded: ContentBlock[] = []
+  for (const block of blocks) {
+    if (block.type === 'image') {
+      folded.push({ type: 'text', text: await resolve(block, signal) })
+      continue
+    }
+    // `read_image` hands its picture back inside a tool result, so the nested
+    // content needs the same treatment as a directly attached image.
+    if (block.type === 'tool-result' && contentHasImage(block.content)) {
+      folded.push({ ...block, content: await foldBlocks(block.content, resolve, signal) })
+      continue
+    }
+    folded.push(block)
+  }
+  return folded
+}
+
+/**
+ * Replace every image block in the conversation with text, so a wire route
+ * that cannot carry pictures still carries what they say. Messages are frozen,
+ * so this rebuilds only the ones that actually hold an image.
+ * @param messages - the harness conversation, in order.
+ * @param resolve - produces the stand-in text for one image.
+ * @param signal - caller lifetime, forwarded to the resolver.
+ * @returns the conversation with no image blocks left in it.
+ */
+export async function foldImagesToText(
+  messages: Message[],
+  resolve: ImageTextResolver,
+  signal?: AbortSignal,
+): Promise<Message[]> {
+  const folded: Message[] = []
+  for (const message of messages) {
+    if (!contentHasImage(message.content)) {
+      folded.push(message)
+      continue
+    }
+    folded.push({ ...message, content: await foldBlocks(message.content, resolve, signal) })
+  }
+  return folded
 }
 
 /** Serialize one assistant message (text + reasoning + tool calls). */

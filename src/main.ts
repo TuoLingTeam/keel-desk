@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   getCurrentWindow,
   type Theme,
@@ -36,6 +37,13 @@ interface HarnessThemeMessage {
 
 const HARNESS_THEME_MESSAGE = "deepseek-harness:theme";
 const HARNESS_THEME_REQUEST = "deepseek-harness:theme-request";
+const HARNESS_RELAUNCHING_EVENT = "harness://relaunching";
+
+// The macOS window keeps its native traffic lights, so the stylesheet needs to
+// know which platform it is dressing before the title bar is first painted.
+if (navigator.userAgent.includes("Mac OS X")) {
+  document.body.dataset.platform = "macos";
+}
 
 const title = document.querySelector<HTMLElement>("#launch-title");
 const kicker = document.querySelector<HTMLElement>("#launch-kicker");
@@ -143,7 +151,24 @@ function bindSystemTheme(): void {
   });
 }
 
+/**
+ * Harness 的主题偏好，由壳层在文档创建前写在 `<html>` 上。
+ * 明确的 light/dark 优先于系统配色；`system` 或缺失时返回 null。
+ */
+function bootTheme(): Theme | null {
+  const value = document.documentElement.dataset.dshBoot;
+  return value === "dark" || value === "light" ? value : null;
+}
+
 async function bindWindowTheme(): Promise<void> {
+  // 用户在 Harness 里选定的主题是权威来源；此时跟随系统会把启动画面
+  // 画成另一种配色，等 Harness 就绪后再翻一次——那正是要消除的闪烁。
+  const preferred = bootTheme();
+  if (preferred !== null) {
+    applyWindowTheme(preferred);
+    return;
+  }
+
   if (!appWindow) {
     bindSystemTheme();
     return;
@@ -169,10 +194,13 @@ window.addEventListener("message", (event) => {
     mountedHarnessOrigin === null
     || event.origin !== mountedHarnessOrigin
     || event.source !== harnessFrame?.contentWindow
-    || !isHarnessThemeMessage(event.data)
   ) return;
 
-  applyHarnessTheme(event.data.colorScheme);
+  if (isHarnessThemeMessage(event.data)) {
+    applyHarnessTheme(event.data.colorScheme);
+  } else if (event.data.type === "deepseek-harness:restart") {
+    void invoke("restart_harness");
+  }
 });
 
 async function syncMaximizedState(): Promise<void> {
@@ -285,6 +313,237 @@ async function pollLaunch(): Promise<void> {
   }
 }
 
+interface ModelUsage {
+  model: string;
+  requests: number;
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cost: number | null;
+}
+
+interface UsageSnapshotPayload {
+  balance: {
+    currency: string;
+    total: string;
+    granted: string;
+    toppedUp: string;
+    available: boolean;
+  } | null;
+  balanceError: string | null;
+  today: {
+    requests: number;
+    inputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    billedTokens: number;
+    cacheHitRatio: number | null;
+    cost: number | null;
+    byModel: ModelUsage[];
+  };
+  usageError: string | null;
+  fetchedAt: number;
+  hasKey: boolean;
+}
+
+const USAGE_INTERVAL_KEY = "deepseek-harness:usage-interval";
+const USAGE_INTERVAL_DEFAULT = 60;
+
+const usageMeter = document.querySelector<HTMLElement>("#usage-meter");
+const usagePanel = document.querySelector<HTMLElement>("#usage-panel");
+const usageSummary = document.querySelector<HTMLButtonElement>("#usage-summary");
+const usageIntervalInput = document.querySelector<HTMLInputElement>("#usage-interval");
+const usageModels = document.querySelector<HTMLElement>("#usage-models");
+
+let usageTimer: number | undefined;
+let usageStamp: number | undefined;
+
+const usageText = (id: string, value: string): void => {
+  const node = document.querySelector<HTMLElement>(`#${id}`);
+  if (node) node.textContent = value;
+};
+
+const usageNote = (id: string, message: string | null): void => {
+  const node = document.querySelector<HTMLElement>(`#${id}`);
+  if (!node) return;
+  node.textContent = message ?? "";
+  node.hidden = message === null;
+};
+
+/** 金额统一两位小数，缺价时给出「—」而不是假装是 0。 */
+function money(value: number | null | undefined, currency = "CNY"): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  const symbol = currency === "CNY" ? "¥" : `${currency} `;
+  return `${symbol}${value.toFixed(2)}`;
+}
+
+function countTokens(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(value);
+}
+
+function percent(value: number | null): string {
+  return value === null ? "—" : `${Math.round(value * 100)}%`;
+}
+
+function renderUsageModels(rows: ModelUsage[]): void {
+  if (!usageModels) return;
+  usageModels.replaceChildren();
+  for (const row of rows) {
+    const line = document.createElement("div");
+    line.className = "usage-model-row";
+    const name = document.createElement("span");
+    name.textContent = row.model;
+    const figures = document.createElement("span");
+    const billed = row.inputTokens + row.cacheReadTokens + row.cacheWriteTokens + row.outputTokens;
+    figures.textContent = `${row.requests} 次 · ${countTokens(billed)} · ${money(row.cost)}`;
+    line.append(name, figures);
+    usageModels.append(line);
+  }
+}
+
+function renderUsage(snapshot: UsageSnapshotPayload): void {
+  const { balance, today } = snapshot;
+  const currency = balance?.currency ?? "CNY";
+
+  const dot = document.querySelector<HTMLElement>("#usage-dot");
+  if (dot) {
+    dot.dataset.state = balance === null ? "error" : balance.available ? "ok" : "error";
+  }
+
+  const total = balance === null ? null : Number.parseFloat(balance.total);
+  usageText("usage-balance", money(total, currency));
+  usageText("usage-hero", balance === null ? "—" : `${currency} ${balance.total}`);
+  usageText("usage-topped-up", balance === null ? "—" : `${currency} ${balance.toppedUp}`);
+  usageText("usage-granted", balance === null ? "—" : `${currency} ${balance.granted}`);
+  usageText("usage-available", balance === null ? "—" : balance.available ? "可用" : "不可用");
+  usageNote(
+    "usage-balance-error",
+    snapshot.hasKey
+      ? snapshot.balanceError
+      : "未找到 API Key：请在 Harness 里配置 DeepSeek 凭据后重试。",
+  );
+
+  usageText("usage-today-cost", money(today.cost));
+  usageText("usage-today-requests", String(today.requests));
+  usageText("usage-today-tokens", countTokens(today.billedTokens));
+  usageText("usage-cache", percent(today.cacheHitRatio));
+
+  usageText("usage-cost-detail", money(today.cost));
+  usageText("usage-requests-detail", `${today.requests} 次`);
+  usageText("usage-billed-detail", today.billedTokens.toLocaleString("zh-CN"));
+  usageText(
+    "usage-cache-detail",
+    `${percent(today.cacheHitRatio)} · ${countTokens(today.cacheReadTokens)}`,
+  );
+  usageText("usage-input-detail", countTokens(today.inputTokens));
+  usageText("usage-output-detail", countTokens(today.outputTokens));
+  usageNote("usage-usage-error", snapshot.usageError);
+  renderUsageModels(today.byModel);
+
+  usageStamp = snapshot.fetchedAt;
+  renderUsageStamp();
+  if (usageMeter) usageMeter.hidden = false;
+}
+
+function renderUsageStamp(): void {
+  if (usageStamp === undefined) return;
+  const seconds = Math.max(0, Math.round((Date.now() - usageStamp) / 1000));
+  const ago = seconds < 60 ? `${seconds} 秒前` : `${Math.round(seconds / 60)} 分钟前`;
+  usageText("usage-stamp", `更新于 ${ago}`);
+}
+
+async function refreshUsage(): Promise<void> {
+  try {
+    renderUsage(await invoke<UsageSnapshotPayload>("usage_snapshot"));
+  } catch (reason) {
+    console.error("Usage snapshot failed", reason);
+    usageNote("usage-usage-error", String(reason));
+    if (usageMeter) usageMeter.hidden = false;
+  }
+}
+
+function usageInterval(): number {
+  const stored = Number.parseInt(localStorage.getItem(USAGE_INTERVAL_KEY) ?? "", 10);
+  if (!Number.isFinite(stored)) return USAGE_INTERVAL_DEFAULT;
+  return Math.min(3600, Math.max(15, stored));
+}
+
+/** 重排自动刷新循环；间隔改动即时生效并持久化。 */
+function scheduleUsage(): void {
+  if (usageTimer !== undefined) window.clearInterval(usageTimer);
+  const seconds = usageInterval();
+  if (usageIntervalInput) usageIntervalInput.value = String(seconds);
+  usageTimer = window.setInterval(() => {
+    void refreshUsage();
+  }, seconds * 1000);
+}
+
+function toggleUsagePanel(open: boolean): void {
+  if (!usagePanel || !usageSummary) return;
+  usagePanel.hidden = !open;
+  usageSummary.setAttribute("aria-expanded", String(open));
+  if (open) void refreshUsage();
+}
+
+usageSummary?.addEventListener("click", () => {
+  toggleUsagePanel(usagePanel?.hidden === true);
+});
+
+document.querySelector("#usage-close")?.addEventListener("click", () => {
+  toggleUsagePanel(false);
+});
+
+document.querySelector("#usage-refresh")?.addEventListener("click", () => {
+  void refreshUsage();
+});
+
+usageIntervalInput?.addEventListener("change", () => {
+  const seconds = Math.min(3600, Math.max(15, Number.parseInt(usageIntervalInput.value, 10) || USAGE_INTERVAL_DEFAULT));
+  localStorage.setItem(USAGE_INTERVAL_KEY, String(seconds));
+  scheduleUsage();
+});
+
+// 点面板以外的地方或按 Esc 收起，和其他浮层的习惯一致。
+document.addEventListener("click", (event) => {
+  if (usagePanel?.hidden !== false) return;
+  if (event.target instanceof Node && usageMeter?.contains(event.target)) return;
+  toggleUsagePanel(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && usagePanel?.hidden === false) toggleUsagePanel(false);
+});
+
+window.setInterval(renderUsageStamp, 15_000);
+
+/**
+ * Return to the launch screen and follow a freshly spawned Harness. The tray's
+ * "restart backend" gives the new run a different loopback port, and polling
+ * has already stopped by the time the previous one became ready.
+ */
+function followRelaunch(): void {
+  mountedHarnessUrl = null;
+  mountedHarnessOrigin = null;
+  harnessTheme = null;
+  renderedProgress = 0;
+  setProgress(3, true);
+  renderSteps(0);
+  if (harnessSurface) harnessSurface.hidden = true;
+  if (failure) failure.hidden = true;
+  if (launchShell) launchShell.removeAttribute("aria-hidden");
+  if (stage) stage.setAttribute("aria-busy", "true");
+  document.body.classList.remove("is-harness-ready", "is-failed");
+  void pollLaunch();
+}
+
+void listen(HARNESS_RELAUNCHING_EVENT, followRelaunch);
+
 minimize?.addEventListener("click", () => {
   void runWindowAction((window) => window.minimize());
 });
@@ -316,3 +575,5 @@ if (appWindow) {
 
 void bindWindowTheme();
 void pollLaunch();
+scheduleUsage();
+void refreshUsage();

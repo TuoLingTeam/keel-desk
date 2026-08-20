@@ -14,14 +14,15 @@ import type {
   LlmModelInfo,
   LlmProviderInfo,
   LlmResolvedModelInfo,
+  ModelModality,
   ResolvedRetryPolicy,
   StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
-import { serializeRequest } from './serialize.ts'
-import type { RequestDefaults } from './serialize.ts'
+import { foldImagesToText, serializeRequest } from './serialize.ts'
+import type { ImageTextResolver, RequestDefaults } from './serialize.ts'
 import { parseSse } from './sse.ts'
 import { translate } from './translate.ts'
 import type { WireError } from './types.ts'
@@ -83,6 +84,15 @@ export interface DeepSeekAdapterOptions {
   resolveApiKey: (connection: DeepSeekConnectionOptions) => Promise<string>
   /** Resolve the harness-home anonymous id shared with telemetry and feedback. */
   resolveUserId: () => AnonymousUserId
+  /**
+   * Resolve the text that stands in for an image on this text-only wire route,
+   * checked per operation so the capability follows the composition. Returning
+   * a resolver is what lets the adapter declare image input at all: without one
+   * the route keeps refusing images outright, because declaring a capability
+   * the serializer cannot honour would let the host accept and durably persist
+   * images that every later request then rejects.
+   */
+  resolveImageText?: () => ImageTextResolver | undefined
 }
 
 /** Default maximum idle interval while an adapter stream read is outstanding. */
@@ -104,13 +114,17 @@ const OFF_ONLY_REASONING_EFFORTS = [
   { id: OFF_REASONING_EFFORT, name: 'Off' },
 ] as const
 
-function modelInfo(provider: string, model: DeepSeekCatalogModel): LlmModelInfo {
+function modelInfo(
+  provider: string,
+  model: DeepSeekCatalogModel,
+  inputModalities: readonly ModelModality[],
+): LlmModelInfo {
   return {
     provider,
     id: model.id,
     name: model.name ?? model.id,
     ...model.description === undefined ? {} : { description: model.description },
-    inputModalities: ['text'],
+    inputModalities,
   }
 }
 
@@ -168,8 +182,22 @@ export class DeepSeekAdapter extends LlmAdapter {
     return this.config.options().retryPolicy
   }
 
+  /**
+   * What this route can actually be handed. Images count only while an
+   * image-text resolver is mounted, because that is what turns a picture into
+   * something the chat-completions wire format can carry.
+   */
+  private inputModalities(): readonly ModelModality[] {
+    return this.config.resolveImageText?.() === undefined
+      ? ['text']
+      : ['text', 'image']
+  }
+
   override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
-    return Promise.resolve(this.config.options().models.map(model => modelInfo(provider, model)))
+    const modalities = this.inputModalities()
+    return Promise.resolve(
+      this.config.options().models.map(model => modelInfo(provider, model, modalities)),
+    )
   }
 
   override resolveModel(
@@ -181,14 +209,15 @@ export class DeepSeekAdapter extends LlmAdapter {
     const configured = connection.models.find(entry => entry.id === model)
     const contextWindow = configured?.contextWindow
       ?? connection.defaultContextWindow
+    const inputModalities = this.inputModalities()
     return Promise.resolve({
-      // The chat-completions wire route is text-only regardless of catalog
-      // membership, so the uncatalogued fallback declares the same negative
-      // capability — "unknown" here would let the host accept and persist
-      // images the serializer must then reject.
+      // Catalog membership never changes what the route accepts, so the
+      // uncatalogued fallback declares the same capability — "unknown" here
+      // would let the host accept and persist images the serializer must then
+      // reject.
       ...configured === undefined
-        ? { provider, id: model, name: model, inputModalities: ['text' as const] }
-        : modelInfo(provider, configured),
+        ? { provider, id: model, name: model, inputModalities }
+        : modelInfo(provider, configured, inputModalities),
       context: { contextWindow },
       defaultMaxTokens: configured?.maxTokens ?? connection.maxTokens,
       ...connection.defaults.thinking === 'disabled'
@@ -276,7 +305,14 @@ export class DeepSeekAdapter extends LlmAdapter {
     userId: AnonymousUserId,
     onComment: () => void,
   ): AsyncIterable<StreamChunk> {
-    const body = serializeRequest(options, connection.defaults)
+    // Images become text before serialization, so a route that cannot carry
+    // pictures still carries what they say. Without a resolver the serializer
+    // refuses images exactly as it always did.
+    const resolveImageText = this.config.resolveImageText?.()
+    const prepared = resolveImageText === undefined
+      ? options
+      : { ...options, messages: await foldImagesToText(options.messages, resolveImageText, signal) }
+    const body = serializeRequest(prepared, connection.defaults)
     // Prepared outside the try so the TRANSPORT label below covers exactly the
     // transport boundary, never a serialization failure.
     const payload = JSON.stringify(body)

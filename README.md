@@ -121,7 +121,7 @@ deepseek-harness-desktop/
 ├─ scripts/         # Harness 准备、发行构建与验证脚本
 ├─ src/             # 桌面外壳、自绘标题栏与启动/错误页
 ├─ src-tauri/       # Rust 窗口、便携运行时定位与进程监督器
-├─ app-icon.svg     # 应用图标源文件
+├─ app-icon.png     # 应用图标源文件（1024×1024，已带 macOS 圆角栅格）
 └─ package.json
 ```
 
@@ -243,16 +243,20 @@ pnpm run harness:verify-source
 
 ## 🎨 主题与图标
 
-- 图标源文件：[`app-icon.svg`](app-icon.svg)
+- 图标源文件：[`app-icon.png`](app-icon.png)
 - Tauri 平台图标：`src-tauri/icons/`
+- 托盘模板图标：`src-tauri/icons/tray-template.png`
 - 浅色鲸鱼：[`src/assets/whale-icon-light.svg`](src/assets/whale-icon-light.svg)
 - 深色鲸鱼：[`src/assets/whale-icon-dark.svg`](src/assets/whale-icon-dark.svg)
 
 深色鲸鱼使用 `--dsw-alias-label-primary`，回退值为 `#F9FAFB` / `rgb(249, 250, 251)`。更新图标源文件后可以重新生成平台图标：
 
 ```powershell
-pnpm tauri icon app-icon.svg
+pnpm tauri icon app-icon.png
 ```
+
+托盘图标是单独的一张 macOS 模板图（只用 alpha 通道，由菜单栏自行着色），不随
+`pnpm tauri icon` 重新生成。
 
 ## 📄 源码与分发边界
 

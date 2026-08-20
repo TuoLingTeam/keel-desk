@@ -5,7 +5,7 @@
   "identifier": "ai.deepseek.harness.desktop",
   "build": {
     "beforeDevCommand": "pnpm run dev:desktop",
-    "devUrl": "http://localhost:821",
+    "devUrl": "http://localhost:1821",
     "beforeBuildCommand": "pnpm run build:frontend",
     "frontendDist": "../dist"
   },

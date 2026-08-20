@@ -4,15 +4,32 @@
    panel is a two-column layout — 188px nav rail + content column with a
    54px header and the 24px-padded options area. */
 
-/* Trigger row: match the other wide sidebar controls' compact vertical rhythm. */
+/* Trigger row: match the other wide sidebar controls' compact vertical rhythm.
+   The row owns the outer geometry so Settings and any trigger actions share
+   one line; the -4px bleed keeps hover chrome aligned with the controls above. */
+.triggerRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: calc(100% + 8px);
+  margin: 4px -4px;
+}
+
+/* On the rail the row becomes the icon column the other rail controls use. */
+.triggerRow.rail {
+  flex-direction: column;
+  gap: 0;
+  width: auto;
+  margin: 0;
+}
+
 .trigger {
-  flex: none;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  width: calc(100% + 8px);
   height: 34px;
-  margin: 4px -4px 4px;
   padding: 6px 2px 6px 10px;
   box-sizing: border-box;
   border: none;
@@ -32,6 +49,7 @@
 
 /* Rail trigger: the same 36x36 circle box as the other rail controls. */
 .trigger.rail {
+  flex: none;
   width: 36px;
   height: 36px;
   margin: 8px 0 10px;

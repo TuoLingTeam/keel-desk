@@ -141,15 +141,20 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
 
   return (
     <>
-      <button
-        type="button"
-        className={clsx(css.trigger, !wide && css.rail)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => { setOpen(true) }}
-      >
-        {renderSlot('settings.trigger', { wide })}
-      </button>
+      {/* Settings shares its row with the optional trigger actions: they sit
+          to its right when wide and stack under it on the rail. */}
+      <div className={clsx(css.triggerRow, !wide && css.rail)}>
+        <button
+          type="button"
+          className={clsx(css.trigger, !wide && css.rail)}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => { setOpen(true) }}
+        >
+          {renderSlot('settings.trigger', { wide })}
+        </button>
+        {renderSlot('settings.trigger.action', { wide })}
+      </div>
       {open && (
         <SettingsPanel
           rows={rows}

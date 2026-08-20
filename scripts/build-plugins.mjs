@@ -4,14 +4,36 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const desktopBridgeRoot = join(repositoryRoot, 'desktop-plugins', 'desktop-bridge')
+const desktopManagerRoot = join(repositoryRoot, 'desktop-plugins', 'dsh-manager')
 const publicPluginsRoot = join(repositoryRoot, 'plugins')
 const harnessRoot = join(repositoryRoot, 'harness')
+
+async function pathExists(path) {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
 
 async function buildDesktopBridge() {
   const outDir = join(desktopBridgeRoot, 'lib')
   await mkdir(outDir, { recursive: true })
   await copyFile(join(desktopBridgeRoot, 'src', 'index.mjs'), join(outDir, 'index.mjs'))
   console.log('[plugins] Built Desktop-only Host plugin desktop-bridge')
+}
+
+async function buildDesktopManager() {
+  const outDir = join(desktopManagerRoot, 'lib')
+  await mkdir(outDir, { recursive: true })
+  const buildScript = join(desktopManagerRoot, 'scripts', 'build.mjs')
+  if (await pathExists(buildScript)) {
+    await import(`${pathToFileURL(buildScript).href}?build=${Date.now()}`)
+  } else {
+    await copyFile(join(desktopManagerRoot, 'src', 'index.mjs'), join(outDir, 'index.mjs'))
+  }
+  console.log('[plugins] Built Desktop-only Host plugin dsh-manager')
 }
 
 async function assertStandardBundle(root, directory) {
@@ -88,8 +110,13 @@ async function buildPublicPlugins() {
   const roots = []
   for (const entry of entries.filter(row => row.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
     const root = join(publicPluginsRoot, entry.name)
-    await assertStandardBundle(root, entry.name)
-    await import(`${pathToFileURL(join(root, 'scripts', 'build.mjs')).href}?build=${Date.now()}`)
+    const buildScript = join(root, 'scripts', 'build.mjs')
+    if (await pathExists(buildScript)) {
+      await assertStandardBundle(root, entry.name)
+      await import(`${pathToFileURL(buildScript).href}?build=${Date.now()}`)
+    } else {
+      console.log(`[plugins] Skipping build for non-standard plugin ${entry.name}`)
+    }
     roots.push(root)
   }
   return roots
@@ -99,20 +126,33 @@ async function stageResolverPackage(root) {
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
   const destination = join(harnessRoot, 'node_modules', ...manifest.name.split('/'))
   await rm(destination, { recursive: true, force: true })
-  await mkdir(join(destination, 'lib'), { recursive: true })
+  await mkdir(destination, { recursive: true })
   await copyFile(join(root, 'package.json'), join(destination, 'package.json'))
   if (manifest.dsh?.bundle?.patch === './cordis.patch.yml') {
     await copyFile(join(root, 'cordis.patch.yml'), join(destination, 'cordis.patch.yml'))
   }
-  await cp(join(root, 'lib'), join(destination, 'lib'), {
-    recursive: true,
-    dereference: true,
-  })
+  const libDir = join(root, 'lib')
+  if (await pathExists(libDir)) {
+    await cp(libDir, join(destination, 'lib'), {
+      recursive: true,
+      dereference: true,
+    })
+  } else {
+    // Stage root files if lib/ is missing (legacy plugins)
+    for (const entry of await readdir(root, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name === '.git') continue
+      await cp(join(root, entry.name), join(destination, entry.name), {
+        recursive: true,
+        dereference: true,
+      })
+    }
+  }
   console.log(`[plugins] Staged resolvable package ${manifest.name}`)
 }
 
 await buildDesktopBridge()
+await buildDesktopManager()
 const publicPluginRoots = await buildPublicPlugins()
-for (const root of [desktopBridgeRoot, ...publicPluginRoots]) {
+for (const root of [desktopBridgeRoot, desktopManagerRoot, ...publicPluginRoots]) {
   await stageResolverPackage(root)
 }

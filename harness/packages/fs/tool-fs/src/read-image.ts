@@ -6,8 +6,10 @@
  *
  * The route gate is deliberately stricter than the host upload preflight: a
  * tool result enters durable session history, so emitting an image on a route
- * that cannot carry it would break that route's continuation. Unknown
- * capability therefore refuses instead of relying on the adapter guard.
+ * that cannot carry it would break that route's continuation. A route that
+ * does not declare image input therefore never receives an image block — it
+ * receives the image's text, recognised offline, so an image-blind model can
+ * still read a screenshot instead of being refused outright.
  * @module @deepseek-ai/dsh-tool-fs/src/read-image
  */
 
@@ -17,6 +19,7 @@ import { AttachmentError, AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { createImageOcr, describeImageForModel } from '@deepseek-ai/dsh-image-ocr'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolExecution } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-fs'
@@ -42,7 +45,16 @@ export interface ImageReadValue {
     height: number
     name?: string
   }
+  /**
+   * Recognised text, present only when the calling route cannot accept an
+   * image block. Its presence is what makes the projection return text in
+   * place of the image.
+   */
+  text?: string
 }
+
+/** How a route can be handed the image it asked for. */
+export type ImageRouteMode = 'image' | 'text'
 
 /**
  * Map a model-supplied path to its declared image media type by extension.
@@ -54,14 +66,21 @@ export function imageMediaTypeForPath(filePath: string): ImageMediaType | undefi
 }
 
 /**
- * Enforce the strict image-capability gate for the calling route. Resolves the
- * session's latest routed provider/model (request header config, then agent
- * options) and requires the exact resolved route to declare `image` input explicitly.
+ * Decide how the calling route can receive the image. Resolves the session's
+ * latest routed provider/model (request header config, then agent options);
+ * only a route that declares `image` input explicitly gets an image block,
+ * and anything less — including unknown capability — takes the text path
+ * rather than risking an image in durable session history.
  * @param ctx - the plugin context used to resolve the optional `llm` service.
  * @param exec - the tool-execution context supplying the calling agent.
  * @param requestedPath - the raw, not-yet-resolved path rendered in refusal messages.
+ * @returns whether to return the image itself or its recognised text.
  */
-export async function assertImageCapableRoute(ctx: Context, exec: ToolExecution, requestedPath: string): Promise<void> {
+export async function resolveImageRouteMode(
+  ctx: Context,
+  exec: ToolExecution,
+  requestedPath: string,
+): Promise<ImageRouteMode> {
   const routed = exec.agent?.session.requestHeader()?.config
   const provider = routed?.provider ?? exec.agent?.options.provider
   const model = routed?.model ?? exec.agent?.options.model
@@ -70,9 +89,7 @@ export async function assertImageCapableRoute(ctx: Context, exec: ToolExecution,
     throw new Error(`cannot read "${requestedPath}" as an image: the current model route could not be resolved`)
   }
   const active = await llm.resolveModelInfo(provider, model, exec.signal)
-  if (active.inputModalities === undefined || !active.inputModalities.includes('image')) {
-    throw new Error(`cannot read "${requestedPath}" as an image: model "${model}" does not declare image input; switch to an image-capable model to read images`)
-  }
+  return active.inputModalities?.includes('image') === true ? 'image' : 'text'
 }
 
 /**
@@ -112,10 +129,13 @@ ${image.mediaType} image, ${image.width}x${image.height} px, ${image.bytes} byte
  * @returns the two content blocks used by native and nested dispatches.
  */
 function imageReadContent(value: ImageReadValue): ContentBlock[] {
-  return [
-    { type: 'text', text: formatImageReadOutput(value.path, value.image) },
-    { type: 'image', attachment: imageRefFromValue(value.image) },
-  ]
+  const envelope: ContentBlock = { type: 'text', text: formatImageReadOutput(value.path, value.image) }
+  // An image-blind route gets what the picture says instead of an image block
+  // it could not carry through the rest of the session.
+  if (value.text !== undefined) {
+    return [envelope, { type: 'text', text: value.text }]
+  }
+  return [envelope, { type: 'image', attachment: imageRefFromValue(value.image) }]
 }
 
 /**
@@ -128,9 +148,12 @@ function imageReadContent(value: ImageReadValue): ContentBlock[] {
  *   the optional `attachments`/`llm` services.
  */
 export function applyReadImageTool(ctx: Context): void {
+  // One recogniser for the tool's lifetime, so re-reading the same file costs
+  // one recognition rather than one per call.
+  const ocr = createImageOcr()
   ctx.tools.register(defineTool({
     name: 'read_image',
-    description: 'Read a PNG/JPEG/WebP/GIF file and return the image itself. Requires the current model to accept image input.',
+    description: 'Read a PNG/JPEG/WebP/GIF file. Models that accept image input receive the image itself; others receive the text recognised in it.',
     parameters: {
       file_path: { type: 'string', required: true, description: 'Path to the image file, resolved by the filesystem backend.' },
     },
@@ -153,6 +176,7 @@ export function applyReadImageTool(ctx: Context): void {
               name: { type: 'string' },
             },
           },
+          text: { type: 'string' },
         },
       },
       render: (_args, value) => imageReadContent(value),
@@ -176,7 +200,7 @@ export function applyReadImageTool(ctx: Context): void {
       if (!attachments.imageLimits.mediaTypes.includes(mediaType)) {
         throw new Error(`cannot read "${args.file_path}": ${mediaType} images are not accepted by this deployment`)
       }
-      await assertImageCapableRoute(ctx, exec, args.file_path)
+      const mode = await resolveImageRouteMode(ctx, exec, args.file_path)
 
       const { target, info } = await resolveRegularReadTarget(ctx, exec, args.file_path)
 
@@ -198,6 +222,14 @@ export function applyReadImageTool(ctx: Context): void {
         )
       }
       ctx.emit('fs/observed', target, { kind: 'present', version: info.version }, exec)
+      // Recognition happens after the durable write, so the bytes the model is
+      // told about and the bytes that were read are provably the same object.
+      const recognised = mode === 'text'
+        ? describeImageForModel(
+          await ocr.recognize({ data, mediaType: ref.mediaType, signal: exec.signal }),
+          basename(target.displayPath),
+        )
+        : undefined
       const value: ImageReadValue = {
         path: target.displayPath,
         image: {
@@ -208,6 +240,7 @@ export function applyReadImageTool(ctx: Context): void {
           height: ref.height,
           ...ref.name === undefined ? {} : { name: ref.name },
         },
+        ...recognised === undefined ? {} : { text: recognised },
       }
       if (exec.parent !== undefined) {
         exec.deferContext(createUserMessage({

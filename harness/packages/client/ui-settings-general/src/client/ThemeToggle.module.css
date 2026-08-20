@@ -1,0 +1,44 @@
+/* Theme toggle: the Settings row's sibling, so it repeats that control's
+   34px compact row / 36px rail circle rhythm rather than inventing its own. */
+.toggle {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.toggle:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.toggle:active {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+/* Rail toggle: the same 36x36 circle box as Settings above it. */
+.toggle.rail {
+  width: 36px;
+  height: 36px;
+  margin: 0 0 10px;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.label {
+  overflow: hidden;
+  white-space: nowrap;
+}

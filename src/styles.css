@@ -41,7 +41,11 @@ body {
   background: var(--dsw-alias-bg-base);
 }
 
-body[data-ds-dark-theme] {
+/* 深色调色板有两个入口：Harness 就绪后由主题桥打在 body 上的
+   data-ds-dark-theme，以及窗口出现前由壳层写在 html 上的 data-dsh-boot。
+   后者保证首帧就是最终配色，不会先亮一下再变暗。 */
+body[data-ds-dark-theme],
+html[data-dsh-boot="dark"] body:not([data-ds-theme-ready]) {
   --dsw-static-neutral-bluish-50: rgb(249, 250, 251);
   --dsw-static-neutral-bluish-300: rgb(207, 211, 214);
   --dsw-static-neutral-bluish-875: rgb(35, 35, 36);
@@ -107,6 +111,296 @@ button {
   flex: none;
   background: currentColor;
   mask: url("./assets/whale-icon-light.svg") center / contain no-repeat;
+}
+
+/* 用量挂件：常驻标题栏右端。所有颜色走 --dsw-* 语义变量，
+   随 Harness 的深浅主题一起翻转，不写死任何色值。 */
+.usage-meter {
+  position: relative;
+  display: flex;
+  height: 100%;
+  flex: none;
+  align-items: center;
+  padding-right: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.usage-meter[hidden] {
+  display: none;
+}
+
+.usage-summary {
+  display: flex;
+  height: 22px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  cursor: default;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.usage-summary:hover {
+  border-color: var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.usage-summary:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-primary);
+  outline-offset: 2px;
+}
+
+.usage-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.usage-metric i {
+  color: var(--dsw-alias-label-secondary);
+  font-style: normal;
+  opacity: .75;
+}
+
+.usage-metric b {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+/* 状态点：可用为绿、异常为红、未知沿用次要文字色。 */
+.usage-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-secondary);
+}
+
+.usage-dot[data-state="ok"] {
+  background: rgb(52, 168, 83);
+}
+
+.usage-dot[data-state="error"] {
+  background: rgb(217, 68, 58);
+}
+
+.usage-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 4px;
+  width: 300px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 14px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .22);
+  cursor: default;
+  font-size: 12px;
+  text-align: left;
+}
+
+.usage-panel[hidden] {
+  display: none;
+}
+
+.usage-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.usage-icon-button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.usage-icon-button:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.usage-section + .usage-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.usage-section-title {
+  margin: 0 0 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.usage-hero {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  letter-spacing: -.02em;
+}
+
+.usage-rows {
+  display: grid;
+  margin: 0;
+  gap: 6px;
+}
+
+.usage-rows > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.usage-rows dt {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.usage-rows dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 560;
+}
+
+.usage-models {
+  display: grid;
+  margin-top: 10px;
+  gap: 4px;
+}
+
+.usage-models:empty {
+  display: none;
+}
+
+.usage-model-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-model-row span:first-child {
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-note {
+  margin: 8px 0 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.usage-note[hidden] {
+  display: none;
+}
+
+.usage-panel-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.usage-panel-foot label {
+  color: var(--dsw-alias-label-secondary);
+}
+
+#usage-interval {
+  width: 58px;
+  padding: 5px 7px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-unit {
+  margin-right: auto;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.usage-button {
+  padding: 5px 11px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 560;
+}
+
+.usage-button:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.usage-stamp {
+  margin: 8px 0 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
+  text-align: right;
+}
+
+/* 窄窗口下先收起次要指标，保证余额和标题不会挤在一起。 */
+@media (max-width: 1080px) {
+  .usage-metric:nth-of-type(4),
+  .usage-metric:nth-of-type(5) {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .usage-metric:nth-of-type(3) {
+    display: none;
+  }
+}
+
+/*
+ * macOS keeps its native traffic lights (the window is decorated with an
+ * overlay title bar), so the shell hides its own controls and leaves room for
+ * them instead of drawing a second set.
+ */
+body[data-platform="macos"] .window-controls {
+  display: none;
+}
+
+body[data-platform="macos"] .titlebar-brand {
+  padding-left: 78px;
 }
 
 .window-controls {
@@ -619,12 +913,13 @@ body.is-failed .launch-progress {
   }
 }
 
+/* 只有在壳层没能读到 Harness 偏好时才回退到系统配色；读到了就以它为准。 */
 @media (prefers-color-scheme: dark) {
-  html {
+  html:not([data-dsh-boot]) {
     color-scheme: dark;
   }
 
-  body:not([data-ds-theme-ready]) {
+  html:not([data-dsh-boot]) body:not([data-ds-theme-ready]) {
     --dsw-static-neutral-bluish-50: rgb(249, 250, 251);
     --dsw-static-neutral-bluish-300: rgb(207, 211, 214);
     --dsw-static-neutral-bluish-875: rgb(35, 35, 36);

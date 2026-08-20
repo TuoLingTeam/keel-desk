@@ -1,0 +1,261 @@
+/* 桌面管理页样式。
+   只使用 ui-theme 真实定义的 --dsw-* 语义令牌：深浅主题切换时自动翻转，
+   不出现任何字面色值。命名统一加 dsm- 前缀，避免与宿主样式相撞。 */
+
+.dsm-root {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: 20px;
+  padding: 4px 2px;
+}
+
+.dsm-head h2 {
+  margin: 0 0 6px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+
+.dsm-head p {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.dsm-list {
+  display: grid;
+  gap: 10px;
+}
+
+/* 插件卡片：与设置面板其它区块同一套圆角与描边节奏。 */
+.dsm-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.dsm-card-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dsm-card-title {
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dsm-card-id {
+  margin-left: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* 状态行用 StateDot 组件表达语义色，不用彩色文字、更不用表情。 */
+.dsm-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.dsm-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.dsm-logs {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dsm-logs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.dsm-logs-running {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.dsm-terminal {
+  min-height: 200px;
+  flex: 1;
+}
+
+.dsm-apply-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 提示区：靠留白与层次区分，不画左侧竖线。 */
+.dsm-note {
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.dsm-empty {
+  padding: 40px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ---- 冷咖啡四模型工作台：profile 卡片 ---- */
+.dsm-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dsm-hub-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.dsm-card-sub {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dsm-card-patterns {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.dsm-card-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* ---- 输入框里的冷咖啡破甲开关（conversation.input.left） ---- */
+.dsm-composer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.dsm-composer-toggle[data-on] {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsm-toggle-switch {
+  position: relative;
+  box-sizing: border-box;
+  width: 30px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-3);
+  cursor: pointer;
+  transition: background-color .18s ease, border-color .18s ease;
+  flex: none;
+}
+
+.dsm-toggle-switch:disabled {
+  cursor: default;
+  opacity: .55;
+}
+
+.dsm-composer-toggle[data-on] .dsm-toggle-switch {
+  border-color: var(--dsw-alias-brand-primary);
+  background: var(--dsw-alias-brand-primary);
+}
+
+.dsm-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+  transition: transform .18s ease;
+}
+
+.dsm-composer-toggle[data-on] .dsm-toggle-knob {
+  transform: translateX(12px);
+}
+
+.dsm-toggle-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.dsm-toggle-error {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  color: var(--dsw-alias-label-on-accent, #fff);
+  background: var(--dsw-alias-risk-danger, #d94a4a);
+  font-size: 10px;
+  font-weight: 700;
+  flex: none;
+}
+
+.dsm-runtime {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dsm-runtime-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dsm-plugin-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

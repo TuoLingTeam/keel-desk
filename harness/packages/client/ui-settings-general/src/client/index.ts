@@ -17,11 +17,15 @@ import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: pulls ctx.locale into this program.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+// Type-only: pulls ctx.theme (the theme service backing the foot toggle).
+import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type {
   SettingsOnboardingStep, SettingsRootInjected, SettingsSectionRow,
 } from './shell-contract.ts'
 import { SettingsRoot } from './SettingsRoot.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
+import { ThemeToggle } from './ThemeToggle.tsx'
+import type { ThemeColorScheme, ThemeToggleInjected } from './ThemeToggle.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
 import { SettingsDocumentAction } from './SettingsDocumentAction.tsx'
 import type { SettingsDocumentActionInjected } from './SettingsDocumentAction.tsx'
@@ -35,6 +39,7 @@ export type {
   GeneralSectionComponentProps,
 } from './GeneralSection.tsx'
 export type { SettingsDocumentActionInjected, SettingsDocumentActionProps } from './SettingsDocumentAction.tsx'
+export type { ThemeColorScheme, ThemeToggleInjected, ThemeToggleProps } from './ThemeToggle.tsx'
 export type { SettingsDocumentState } from './settings-document-store.ts'
 export { SettingsDocumentStore } from './settings-document-store.ts'
 export type { SettingsKey } from './locales.ts'
@@ -143,6 +148,7 @@ export function apply(ctx: ClientContext): void {
     name: 'sidebar.settings',
     children: {
       'settings.trigger': { kind: 'single', scope: 'root' },
+      'settings.trigger.action': { kind: 'list', scope: 'root' },
       'settings.header': { kind: 'single', scope: 'root' },
       'settings.action': { kind: 'list', scope: 'root' },
       'settings.close': { kind: 'single', scope: 'root' },
@@ -154,6 +160,31 @@ export function apply(ctx: ClientContext): void {
 
   ctx.slots.inject('settings.trigger', () =>
     ctx.slots.register({ name: 'settings.trigger', locale: NS }, TriggerContent))
+  // The foot toggle is composition-conditional: a deployment without the theme
+  // plugin keeps the Settings row exactly as it was. It writes only through
+  // `setTheme` and reads only from `theme/change`, so it and the
+  // Settings → Appearance row follow each other with no wiring between them.
+  ctx.inject(['theme'], (themeCtx) => {
+    const themeToggleInjected = (): ThemeToggleInjected => ({
+      hooks: {
+        colorScheme: {
+          getSnapshot: (): ThemeColorScheme => themeCtx.theme.getTheme().active.colorScheme,
+          subscribe: listener => themeCtx.on('theme/change', listener),
+        },
+      },
+      toggle: () => {
+        const { colorScheme } = themeCtx.theme.getTheme().active
+        themeCtx.theme.setTheme(colorScheme === 'dark' ? 'light' : 'dark')
+      },
+    })
+    themeCtx.slots.inject('settings.trigger.action', () => themeCtx.slots.register({
+      name: 'settings.trigger.action',
+      id: 'theme',
+      order: 0,
+      locale: NS,
+      inject: themeToggleInjected,
+    }, ThemeToggle))
+  })
   ctx.slots.inject('settings.header', () =>
     ctx.slots.register({ name: 'settings.header', locale: NS }, HeaderContent))
   if (documentInjected !== undefined) {
