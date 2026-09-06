@@ -3,7 +3,6 @@ dist/
 dist-ssr/
 release-runtime/
 desktop-plugins/*/lib/
-/plugins/
 src-tauri/target/
 src-tauri/target-link-fix/
 .tmp-*/
@@ -12,3 +11,9 @@ src-tauri/target-link-fix/
 desktop-settings.json
 coldbrew-sessions.json
 =9.2
+
+# plugins/ is vendored. Keep source + built lib, drop nested repos and install trees.
+plugins/*/.git/
+plugins/*/.idea/
+plugins/*/node_modules/
+plugins/*/dist-smoke/

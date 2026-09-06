@@ -1,0 +1,6 @@
+# dsh-open-external bundle layer. This Loader row activates the (empty) Host
+# half; the package's dsh.client manifest exposes the browser link-interceptor
+# through the standard Harness client-module discovery path.
+- insert:
+    - id: dsh-open-external
+      name: dsh-open-external

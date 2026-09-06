@@ -1,0 +1,6 @@
+# dsh-quick-commands bundle layer. This Loader row activates the Host half
+# (the shared-file store + its HTTP route); the package's dsh.client manifest
+# exposes the browser bundle through the standard Harness client-module path.
+- insert:
+    - id: dsh-quick-commands
+      name: dsh-quick-commands

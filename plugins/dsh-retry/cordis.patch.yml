@@ -1,0 +1,6 @@
+# dsh-retry bundle layer. This Loader row activates the Host half (the retry-count
+# store + its HTTP route); the package's dsh.client manifest exposes the browser
+# settings row through the standard Harness client-module discovery path.
+- insert:
+    - id: dsh-retry
+      name: dsh-retry

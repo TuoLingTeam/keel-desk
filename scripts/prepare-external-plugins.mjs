@@ -75,12 +75,13 @@ for (const plugin of lock.plugins) {
   const gitDirectory = join(target, '.git')
   const existed = await pathExists(target)
   const isRepository = await pathExists(gitDirectory)
+  const vendored = existed && !isRepository && await pathExists(join(target, 'package.json'))
 
-  if (existed && !isRepository) {
+  if (existed && !isRepository && !vendored) {
     throw new Error(`${plugin.id}: ${target} exists but is not an independent Git repository`)
   }
 
-  if (!isRepository) {
+  if (!isRepository && !vendored) {
     console.log(`[plugins] Cloning ${plugin.repository} into ${target}`)
     await run('git', ['clone', '--filter=blob:none', '--no-tags', plugin.repository, target])
     const clonedHead = await run('git', ['rev-parse', 'HEAD'], { cwd: target, capture: true })
@@ -90,12 +91,16 @@ for (const plugin of lock.plugins) {
     }
   }
 
-  const head = await run('git', ['rev-parse', 'HEAD'], { cwd: target, capture: true })
-  if (head !== plugin.commit) {
-    throw new Error(
-      `${plugin.id}: local HEAD ${head} differs from pinned commit ${plugin.commit}; `
-      + 'commit the plugin work and update external-plugins.json together',
-    )
+  if (isRepository) {
+    const head = await run('git', ['rev-parse', 'HEAD'], { cwd: target, capture: true })
+    if (head !== plugin.commit) {
+      throw new Error(
+        `${plugin.id}: local HEAD ${head} differs from pinned commit ${plugin.commit}; `
+        + 'commit the plugin work and update external-plugins.json together',
+      )
+    }
+  } else {
+    console.log(`[plugins] Using vendored ${plugin.id}`)
   }
 
   const invocation = pnpmInvocation(['--dir', target, 'install', '--frozen-lockfile'])
