@@ -21,8 +21,12 @@ function run(command, args) {
 await rm(outDir, { recursive: true, force: true })
 await mkdir(outDir, { recursive: true })
 await copyFile(join(pluginRoot, 'src', 'index.mjs'), join(outDir, 'index.mjs'))
-// 冷咖啡四个 profile 提示词是 host 端运行时资源（lib/index.mjs 相对路径读取）。
+await copyFile(join(pluginRoot, 'src', 'reverify.mjs'), join(outDir, 'reverify.mjs'))
+await copyFile(join(pluginRoot, 'src', 'reverify-bridge.py'), join(outDir, 'reverify-bridge.py'))
+// 冷咖啡五个 profile 提示词是 host 端运行时资源（lib/index.mjs 相对路径读取）。
 await cp(join(pluginRoot, 'src', 'profiles'), join(outDir, 'profiles'), { recursive: true })
+// Vendored Reverify 0.9.0：纯 Python 核心，host 用系统/venv Python 直接调。
+await cp(join(pluginRoot, 'vendor', 'reverify'), join(outDir, 'vendor', 'reverify'), { recursive: true })
 
 const client = join(outDir, 'client.js')
 await run(esbuildPath, [

@@ -6,6 +6,9 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 import type { Context, Events } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent, RequestErrorAction } from '@deepseek-ai/dsh-agent'
@@ -13,6 +16,32 @@ import type { LlmFailure, ResolvedRetryPolicy } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { RetryId } from './brand.ts'
 import type { LlmRetryEventData } from './types.ts'
+
+/**
+ * Optional global retry-count override, written by the dsh-retry settings row to
+ * `<DSH_HOME>/dsh-retry.json` ({ maxRetries }). When present it replaces a
+ * *normal* policy's maxRetries for every provider (an always policy is already
+ * unbounded); when ABSENT it returns undefined and each policy keeps its own
+ * value — so the app-wide default lives in resolveRetryPolicy, not here, and
+ * tests that set an explicit maxRetries are untouched. Cached briefly to stay
+ * off the hot recovery path.
+ */
+const OVERRIDE_TTL_MS = 1_000
+let overrideCache: { at: number; value: number | undefined } | undefined
+
+function globalMaxRetries(): number | undefined {
+  const now = Date.now()
+  if (overrideCache !== undefined && now - overrideCache.at < OVERRIDE_TTL_MS) return overrideCache.value
+  let value: number | undefined
+  try {
+    const home = resolve(process.env.DSH_HOME || join(homedir(), '.dsh'))
+    const parsed: unknown = JSON.parse(readFileSync(join(home, 'dsh-retry.json'), 'utf8'))
+    const candidate = (parsed as { maxRetries?: unknown })?.maxRetries
+    if (typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate >= 0) value = candidate
+  } catch { /* absent / unreadable → no override */ }
+  overrideCache = { at: now, value }
+  return value
+}
 
 export type { LlmRetryEventData, LlmRetryStartedEventData } from './types.ts'
 export { RetryId } from './brand.ts'
@@ -154,10 +183,19 @@ export function apply(ctx: Context, config: Config = {}, internals: RetryInterna
   }
 
   async function recover(
-    { agent, turn, step, provider, failure, retryPolicy: policy, signal }: Parameters<Events['agent/request-error']>[0],
+    { agent, turn, step, provider, failure, retryPolicy, signal }: Parameters<Events['agent/request-error']>[0],
     next: () => Promise<RequestErrorAction>,
   ): Promise<RequestErrorAction> {
-    if (policy === undefined) return next()
+    if (retryPolicy === undefined) return next()
+    // One retry count for every provider (dsh-retry settings row) replaces a
+    // normal policy's maxRetries; an always policy is already unbounded.
+    let policy: ResolvedRetryPolicy = retryPolicy
+    if (policy.mode === 'normal') {
+      const override = globalMaxRetries()
+      if (override !== undefined && override !== policy.maxRetries) {
+        policy = Object.freeze({ ...policy, maxRetries: override }) as ResolvedRetryPolicy
+      }
+    }
     if (policy.mode === 'always') {
       if (signal.aborted || lifetime.signal.aborted) return
       const fusedSignal = AbortSignal.any([signal, lifetime.signal])

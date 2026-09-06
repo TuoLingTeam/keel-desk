@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-06-running-row-sweep-uses-transform.md
+2026-09-06-running-row-sweep-uses-transform.md: 708d4497b035a381087c85feff213c914bf591e9
+2026-09-06-running-row-sweep-uses-transform.zh.md: 5964438ed33c2057775b70373db31e6bfed27d83

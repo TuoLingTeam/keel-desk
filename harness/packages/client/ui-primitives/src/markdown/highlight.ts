@@ -251,16 +251,25 @@ const warmupTimer = setTimeout(() => { highlighter() }, 0)
 ;(warmupTimer as { unref?: () => void }).unref?.()
 
 /**
+ * Byte budget for a single highlighted fence. Larger sources stay plain
+ * `<pre>` so Shiki cannot allocate a span tree that WKWebView then paints
+ * every frame. Copy still uses the original source.
+ */
+export const HIGHLIGHT_MAX_CHARS = 32_768
+
+/**
  * Highlight `code` into shiki's HTML (a single `<pre class="shiki">` tree)
  * when `lang` maps to a registered grammar; `undefined` means the caller
  * renders its plain fallback. A lazy grammar not yet loaded returns `undefined`
  * for this call and loads in the background; subscribe with
- * {@link onGrammarLoaded} to re-highlight once it registers.
+ * {@link onGrammarLoaded} to re-highlight once it registers. Sources longer
+ * than {@link HIGHLIGHT_MAX_CHARS} also return `undefined`.
  * @param code - the source text.
  * @param lang - the language hint (a markdown fence info string or a fixed caller id).
- * @returns the highlighted HTML, or `undefined` for unknown or not-yet-loaded languages.
+ * @returns the highlighted HTML, or `undefined` for unknown, oversized, or not-yet-loaded languages.
  */
 export function highlightToHtml(code: string, lang: string | undefined): string | undefined {
+  if (code.length > HIGHLIGHT_MAX_CHARS) return undefined
   const resolved = lang === undefined ? undefined : LANG_ALIASES.get(lang.toLowerCase())
   if (resolved === undefined) return undefined
   if (!ensureGrammar(resolved)) return undefined
@@ -294,6 +303,7 @@ export interface HighlightSpan {
  * @returns one entry per source line (each an array of runs), or `undefined` for unknown or not-yet-loaded languages.
  */
 export function highlightLines(code: string, lang: string | undefined): HighlightSpan[][] | undefined {
+  if (code.length > HIGHLIGHT_MAX_CHARS) return undefined
   const resolved = lang === undefined ? undefined : LANG_ALIASES.get(lang.toLowerCase())
   if (resolved === undefined) return undefined
   if (!ensureGrammar(resolved)) return undefined

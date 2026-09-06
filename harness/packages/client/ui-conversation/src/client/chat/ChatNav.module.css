@@ -1,0 +1,262 @@
+/* In-transcript nav: a zero-height sticky band pinned to the top of the
+   scrollport (the same technique the back-to-bottom control uses at the
+   bottom). Its children float over the flow; the band itself is click-through.
+   Controls right-align to the message column's edge — the same axis as the
+   back-to-bottom button — via the shared chat-content-width inset. */
+
+.region {
+  position: sticky;
+  top: 0;
+  z-index: 9;
+  height: 0;
+  pointer-events: none;
+}
+
+.dock,
+.findBar,
+.outlinePanel {
+  position: absolute;
+  top: 8px;
+  right: max(8px, calc((100% - var(--dsh-chat-content-width)) / 2));
+  pointer-events: auto;
+}
+
+/* Idle: two round floating icon buttons. */
+.dock {
+  display: flex;
+  gap: 6px;
+}
+
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 100px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-button-floating-fill);
+  box-shadow: var(--dsw-shadow-lv2);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-button-floating-hover);
+}
+
+.iconButton[data-active='true'] {
+  color: var(--dsw-alias-brand-primary);
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+/* Find bar: input + counter + prev/next + close, one floating pill. */
+.findBar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: min(340px, calc(100% - 16px));
+  height: 36px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-shadow-lv2);
+}
+
+.findGlyph {
+  flex: none;
+  display: flex;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.findInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Drop WebKit's inset search decorations; the pill supplies its own glyph. */
+.findInput::-webkit-search-decoration,
+.findInput::-webkit-search-cancel-button {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.findInput::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.findCount {
+  flex: none;
+  min-width: 40px;
+  text-align: right;
+  padding-right: 2px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}
+
+.findCount[data-empty='true'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.divider {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--dsw-alias-border-l2);
+}
+
+.stepButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.stepButton:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+.stepButton:disabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Outline: a scrollable list of every message we sent. */
+.outlinePanel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100% - 16px));
+  max-height: min(60vh, 440px);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-shadow-lv2);
+  overflow: hidden;
+}
+
+.outlineHeader {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.outlineList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+  margin: 0;
+  list-style: none;
+}
+
+.outlineEmpty {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: center;
+}
+
+.outlineItem {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.outlineItem:hover {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+.outlineOrdinal {
+  flex: none;
+  min-width: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.outlineText {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.outlineMore {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-brand-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.outlineMore:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+.outlineMore:disabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: default;
+}
+
+/* Custom Highlight API paint — registered globally, so styled outside modules.
+   Only color / background-color are honoured on ::highlight(). */
+:global(::highlight(dsh-chat-find)) {
+  background-color: rgba(255, 213, 0, 0.38);
+  color: inherit;
+}
+
+:global(::highlight(dsh-chat-find-current)) {
+  background-color: #ff9a1f;
+  color: #1a1a1a;
+}

@@ -1,3 +1,4 @@
+import { lstat, symlink } from 'node:fs/promises'
 import { access, copyFile, cp, mkdir, readFile, readdir, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -147,7 +148,73 @@ async function stageResolverPackage(root) {
       })
     }
   }
+  await linkOfficialPeers(destination, manifest)
   console.log(`[plugins] Staged resolvable package ${manifest.name}`)
+}
+
+const officialPeerRoots = new Map()
+
+async function officialPeerRoot(name) {
+  if (officialPeerRoots.has(name)) return officialPeerRoots.get(name)
+  const direct = join(harnessRoot, 'node_modules', ...name.split('/'))
+  if (await pathExists(direct)) {
+    officialPeerRoots.set(name, direct)
+    return direct
+  }
+  const groups = [join(harnessRoot, 'vendor'), join(harnessRoot, 'packages')]
+  for (const group of groups) {
+    if (!(await pathExists(group))) continue
+    const entries = await readdir(group, { withFileTypes: true })
+    for (const entry of entries.filter(row => row.isDirectory())) {
+      const nested = join(group, entry.name)
+      const manifests = []
+      if (await pathExists(join(nested, 'package.json'))) manifests.push(nested)
+      else {
+        try {
+          for (const child of await readdir(nested, { withFileTypes: true })) {
+            if (child.isDirectory()) manifests.push(join(nested, child.name))
+          }
+        } catch {
+          continue
+        }
+      }
+      for (const root of manifests) {
+        const pkgPath = join(root, 'package.json')
+        if (!(await pathExists(pkgPath))) continue
+        const pkg = JSON.parse(await readFile(pkgPath, 'utf8'))
+        if (pkg.name === name) {
+          officialPeerRoots.set(name, root)
+          return root
+        }
+      }
+    }
+  }
+  officialPeerRoots.set(name, undefined)
+  return undefined
+}
+
+/** Desktop stages plugins as copies under harness/node_modules. Node then
+ *  resolves `@deepseek-ai/*` from that copy, which cannot see pnpm's isolated
+ *  workspace packages. Link declared official peers back to the vendored tree. */
+async function linkOfficialPeers(destination, manifest) {
+  const names = new Set([
+    ...Object.keys(manifest.peerDependencies ?? {}),
+    ...Object.keys(manifest.dependencies ?? {}),
+  ].filter(name => name.startsWith('@deepseek-ai/')))
+  if (names.size === 0) return
+  await mkdir(join(destination, 'node_modules', '@deepseek-ai'), { recursive: true })
+  for (const name of names) {
+    const target = await officialPeerRoot(name)
+    if (!target) continue
+    const link = join(destination, 'node_modules', ...name.split('/'))
+    await mkdir(dirname(link), { recursive: true })
+    try {
+      await rm(link, { recursive: true, force: true })
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+    await symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir')
+  }
 }
 
 await buildDesktopBridge()

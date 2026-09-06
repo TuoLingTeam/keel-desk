@@ -77,34 +77,6 @@
   gap: 8px;
 }
 
-.dsm-logs {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.dsm-logs-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  font-weight: 560;
-}
-
-.dsm-logs-running {
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.dsm-terminal {
-  min-height: 200px;
-  flex: 1;
-}
-
 .dsm-apply-row {
   display: flex;
   flex-direction: column;
@@ -123,6 +95,23 @@
   line-height: 1.65;
 }
 
+/* 重启提示：文案与按钮同行，按钮保持普通尺寸靠右，不占满宽度。 */
+.dsm-apply-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dsm-apply-note > span {
+  min-width: 0;
+}
+
+.dsm-apply-note :global(button) {
+  flex: none;
+  white-space: nowrap;
+}
+
 .dsm-empty {
   padding: 40px 0;
   color: var(--dsw-alias-label-secondary);
@@ -130,7 +119,7 @@
   text-align: center;
 }
 
-/* ---- 冷咖啡四模型工作台：profile 卡片 ---- */
+/* ---- 冷咖啡五模型工作台：profile 卡片 ---- */
 .dsm-hub {
   display: flex;
   flex-direction: column;
@@ -151,6 +140,22 @@
   line-height: 1.5;
 }
 
+/* 冷咖啡插件的项目地址：低调可点，hover 提亮。 */
+.dsm-card-link {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsm-card-link:hover {
+  color: var(--dsw-alias-brand-primary);
+  text-decoration: underline;
+}
+
 .dsm-card-patterns {
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
@@ -163,6 +168,72 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
+}
+
+/* Reverify：整卡改成「状态 → 清单 → 缺件才出按钮」，避免右上角永远挂着安装。 */
+.dsm-card-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.dsm-card-stack .dsm-actions {
+  justify-content: flex-end;
+}
+
+.dsm-cap-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dsm-cap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.dsm-cap-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dsm-cap-name {
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dsm-cap-note {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.dsm-tag {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.dsm-tag[data-on] {
+  border-color: var(--dsw-alias-button-primary-fill);
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
 }
 
 /* ---- 输入框里的冷咖啡破甲开关（conversation.input.left） ---- */
@@ -222,9 +293,68 @@
 }
 
 .dsm-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 140px;
+  max-width: 180px;
+  white-space: nowrap;
+}
+
+/* 「冷咖啡」口令：点击复制。图标提示可点，复制成功短暂变色。 */
+.dsm-phrase-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: color .15s ease;
+}
+
+.dsm-phrase-copy:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsm-phrase-copy svg {
+  opacity: .6;
+}
+
+.dsm-phrase-copy:hover svg {
+  opacity: 1;
+}
+
+.dsm-phrase-copy[data-copied] {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.dsm-phrase-copy[data-copied] svg {
+  opacity: 1;
+}
+
+.dsm-copy-toast {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: rgba(20, 20, 20, .92);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+  pointer-events: none;
+}
+
+.dsm-copy-toast-err {
+  background: rgba(180, 40, 40, .94);
 }
 
 .dsm-toggle-error {
@@ -234,8 +364,8 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  color: var(--dsw-alias-label-on-accent, #fff);
-  background: var(--dsw-alias-risk-danger, #d94a4a);
+  color: var(--dsw-alias-label-primary-foreground);
+  background: var(--dsw-alias-risk-danger);
   font-size: 10px;
   font-weight: 700;
   flex: none;
@@ -289,4 +419,146 @@
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.dsm-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dsm-mode-chip {
+  padding: 5px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dsm-mode-chip:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* 暗色下 brand-primary 会翻成浅填充，必须用 on-fill 字色，
+   不能用 label-on-accent/#fff（变量不存在，白底白字）。 */
+.dsm-mode-chip[data-on] {
+  border-color: var(--dsw-alias-button-primary-fill);
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+  font-weight: 600;
+}
+
+.dsm-mode-chip[data-on]:hover {
+  background: var(--dsw-alias-button-primary-hover);
+  border-color: var(--dsw-alias-button-primary-hover);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.dsm-mode-hint {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.dsm-install-dialog {
+  width: min(720px, calc(100vw - 48px));
+  max-height: min(80vh, 720px);
+}
+
+.dsm-install {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 18px 16px;
+  min-height: 0;
+}
+
+.dsm-install-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dsm-install-title {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.dsm-install-desc {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.dsm-install-live {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dsm-install-live-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+}
+
+.dsm-install-live-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsm-install-live-pct {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.dsm-install-bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.dsm-install-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--dsw-alias-button-primary-fill);
+}
+
+.dsm-install-log {
+  margin: 0;
+  min-height: 220px;
+  max-height: 42vh;
+  overflow: auto;
+  padding: 12px 13px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dsm-install-foot {
+  display: flex;
+  justify-content: flex-end;
 }

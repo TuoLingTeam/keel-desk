@@ -23,6 +23,8 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 300px;
+  transform: translateX(-100%);
+  will-change: transform;
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -34,8 +36,8 @@
 }
 
 @keyframes dsh-skill-row-sweep {
-  0% { left: -300px; }
-  90%, 100% { left: 100%; }
+  0% { transform: translateX(-100%); }
+  90%, 100% { transform: translateX(100vw); }
 }
 
 .leading {

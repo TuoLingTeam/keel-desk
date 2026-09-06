@@ -40,6 +40,7 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions,
+  ImageBlock,
   LlmModelInfo,
   LlmProviderInfo,
   LlmResolvedModelInfo,
@@ -48,10 +49,15 @@ import type {
   StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
+import { createImageOcr, describeImageForModel } from '@deepseek-ai/dsh-image-ocr'
+import type { ImageOcr } from '@deepseek-ai/dsh-image-ocr'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
-import { toPiContext } from './context.ts'
+import { toPiContext, toPiContextTextFolded } from './context.ts'
+import type { ImageTextFold } from './context.ts'
 import { toStreamChunks } from './stream.ts'
+import { isImageRefusal, TextOnlyRouteStore } from './text-only-store.ts'
+import type { Context as PiContext } from '@earendil-works/pi-ai'
 
 /** One resolution's frozen view: the profiles and the collection built from them. */
 interface PiAiSnapshot {
@@ -185,9 +191,39 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
  */
 export class PiAiAdapter extends LlmAdapter {
   private snapshot: PiAiSnapshot | undefined
+  /** Learned memory of routes proven image-blind; drives the up-front fold. */
+  private readonly textOnlyRoutes = new TextOnlyRouteStore()
+  /**
+   * One recognizer for the adapter's lifetime, so the same screenshot replayed
+   * through history is OCR'd once (its digest cache spans every request).
+   */
+  private readonly ocr: ImageOcr = createImageOcr()
 
   constructor(private readonly config: PiAiAdapterOptions) {
     super()
+  }
+
+  /**
+   * Build the image→text fold used when a route is image-blind. Prefers OCR
+   * over durable attachment bytes so a screenshot's words survive; degrades to
+   * the image's path/name and dimensions when no attachment service is mounted
+   * or the bytes cannot be read, so a fold NEVER fails a request. The `name`
+   * on an `ImageBlock`'s ref is the file path/name `read_image` recorded.
+   */
+  private imageFold(): ImageTextFold {
+    const attachments = this.config.resolveAttachments?.()
+    return async (block: ImageBlock): Promise<string> => {
+      const label = block.attachment.name
+      if (attachments === undefined) return describeImageForModel({ kind: 'unavailable', detail: 'no attachment store' }, label)
+      try {
+        const stored = await attachments.readImage(block.attachment)
+        const outcome = await this.ocr.recognize({ data: stored.data, mediaType: stored.ref.mediaType })
+        return describeImageForModel(outcome, label)
+      } catch (error) {
+        const detail = error instanceof Error ? error.message.split('\n')[0] ?? 'unreadable' : 'unreadable'
+        return describeImageForModel({ kind: 'unavailable', detail }, label)
+      }
+    }
   }
 
   /**
@@ -273,6 +309,29 @@ export class PiAiAdapter extends LlmAdapter {
     })
   }
 
+  /** Whether this request must fold its images to text before the wire. */
+  private async shouldFold(options: GenerateOptions, model: Model<Api>): Promise<boolean> {
+    if (!options.messages.some(message => contentHasImage(message.content))) return false
+    // A model whose declared modalities exclude `image` is an explicit
+    // text-only route (the `dsh-model-capability` 「文本」toggle, honored by
+    // `withImageInput`), so fold rather than send-then-fail. A route the store
+    // has already learned as image-blind folds up front so the 400 never
+    // recurs. Anything else still sends the image and lets the provider answer.
+    if (!model.input.includes('image')) return true
+    return await this.textOnlyRoutes.has(options.provider, options.model)
+  }
+
+  /** Build the pi-ai context for one attempt, folding images to text when required. */
+  private async buildContext(options: GenerateOptions, foldToText: boolean): Promise<PiContext> {
+    if (foldToText) return await toPiContextTextFolded(options, this.imageFold())
+    const containsImage = options.messages.some(message => contentHasImage(message.content))
+    const attachments = containsImage ? this.config.resolveAttachments?.() : undefined
+    if (containsImage && attachments === undefined) {
+      throw new LlmError('pi-ai image input requires the durable attachment service', 'UNSUPPORTED_CONTENT')
+    }
+    return attachments === undefined ? toPiContext(options) : await toPiContext(options, attachments)
+  }
+
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     if (options.stop !== undefined) {
       throw new LlmError('llm-pi-ai does not support GenerateOptions.stop', 'UNSUPPORTED_OPTION')
@@ -291,6 +350,99 @@ export class PiAiAdapter extends LlmAdapter {
     )
     const apiKey = await this.config.resolveApiKey(options.provider, profile)
 
+    // Pre-dispatch conversion (reading message content, resolving the fold
+    // decision, building the context) can throw before any stream exists.
+    // A concurrent caller abort during it is classified here, exactly as the
+    // per-attempt stream path classifies one; any other error passes through.
+    const preDispatch = async <T>(thunk: () => Promise<T> | T): Promise<T> => {
+      try {
+        return await thunk()
+      } catch (error: unknown) {
+        if (options.signal?.aborted) {
+          throw new LlmError('pi-ai request aborted by caller', 'ABORTED', { cause: error })
+        }
+        throw error
+      }
+    }
+
+    const containsImage = await preDispatch(() =>
+      options.messages.some(message => contentHasImage(message.content)))
+
+    // Up to two attempts: the first may send the image (the provider's honest
+    // answer decides), the second is folded to text after a proven refusal.
+    let foldToText = await preDispatch(() => this.shouldFold(options, model))
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const context = await preDispatch(() => this.buildContext(options, foldToText))
+      const iterator = this.runAttempt(snapshot, profile, model, reasoning, apiKey, context, options)[Symbol.asyncIterator]()
+      const buffered: StreamChunk[] = []
+      let started = false
+      let heal = false
+      try {
+        while (true) {
+          const result = await iterator.next()
+          if (result.done) break
+          const chunk = result.value
+          if (started) {
+            yield chunk
+            continue
+          }
+          // Nothing has streamed yet: hold the (at most one) leading `usage`
+          // chunk so a turn that dies on an image refusal can be re-run folded
+          // without having emitted anything the consumer would keep.
+          if (chunk.type === 'usage') {
+            buffered.push(chunk)
+            continue
+          }
+          if (chunk.type === 'finish') {
+            const reason = chunk.reason
+            if (!foldToText && containsImage && attempt === 0
+              && reason.kind === 'error'
+              && isImageRefusal(reason.failure.message, reason.failure.code)) {
+              // The route refused the image. Learn it so every later turn
+              // folds up front, then re-run THIS turn folded to text.
+              await this.textOnlyRoutes.remember(options.provider, options.model)
+              heal = true
+              break
+            }
+            for (const held of buffered) yield held
+            yield chunk
+            started = true
+            continue
+          }
+          // A content chunk: this is a real answer, flush and stream the rest.
+          for (const held of buffered) yield held
+          buffered.length = 0
+          started = true
+          yield chunk
+        }
+      } finally {
+        // Resume the attempt generator at its own teardown (consumer abort +
+        // watchdog dispose), whether we finished it or broke out to re-run.
+        try {
+          await iterator.return(undefined)
+        } catch (_abortedSdkTeardown) {
+          // The attempt's stable signal already owns SDK termination.
+        }
+      }
+      if (!heal) return
+      foldToText = true
+    }
+  }
+
+  /**
+   * One provider attempt: open the pi-ai stream for the given context and
+   * relay its chunks. Owns its own consumer abort and idle watchdog so the
+   * orchestrator can run a second, folded attempt with clean lifetimes.
+   */
+  private async * runAttempt(
+    snapshot: PiAiSnapshot,
+    profile: ResolvedPiAiProviderProfile,
+    model: Model<Api>,
+    reasoning: ModelThinkingLevel | undefined,
+    apiKey: string | undefined,
+    context: PiContext,
+    options: GenerateOptions,
+  ): AsyncGenerator<StreamChunk> {
     const consumer = new AbortController()
     const upstream = options.signal === undefined
       ? consumer.signal
@@ -299,17 +451,6 @@ export class PiAiAdapter extends LlmAdapter {
     using watchdog = idleWatchdog(upstream, streamIdleTimeoutMs, 'LLM_STREAM_IDLE_TIMEOUT')
 
     try {
-      const containsImage = options.messages.some(message => contentHasImage(message.content))
-      if (containsImage && !model.input.includes('image')) {
-        throw new LlmError(`pi-ai model "${model.id}" does not support image input`, 'UNSUPPORTED_CONTENT')
-      }
-      const attachments = containsImage ? this.config.resolveAttachments?.() : undefined
-      if (containsImage && attachments === undefined) {
-        throw new LlmError('pi-ai image input requires the durable attachment service', 'UNSUPPORTED_CONTENT')
-      }
-      const context = attachments === undefined
-        ? toPiContext(options)
-        : await toPiContext(options, attachments)
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },

@@ -93,7 +93,8 @@
   min-width: 0;
 }
 
-/* Running sweep glare — same deepsuite ShimmerText pattern as ToolRow. */
+/* Running sweep glare — same deepsuite ShimmerText pattern as ToolRow.
+   Transform, not `left`: inset animation forces a full-tree layout each frame. */
 .root[data-state='running']::after {
   content: '';
   position: absolute;
@@ -101,6 +102,8 @@
   bottom: 0;
   left: 0;
   width: 300px;
+  transform: translateX(-100%);
+  will-change: transform;
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -112,8 +115,8 @@
 }
 
 @keyframes dsh-bash-row-sweep {
-  0% { left: -300px; }
-  90%, 100% { left: 100%; }
+  0% { transform: translateX(-100%); }
+  90%, 100% { transform: translateX(100vw); }
 }
 
 .leading {
@@ -236,4 +239,11 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root[data-state='running']::after {
+    animation: none;
+    display: none;
+  }
 }

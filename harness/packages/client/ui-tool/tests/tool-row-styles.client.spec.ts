@@ -42,4 +42,27 @@ describe('ToolRow.module.css summary line', () => {
     ]))
     expect(declarations('.summarySuffix')).not.toEqual(expect.arrayContaining(['text-overflow: ellipsis']))
   })
+
+  it('animates the running sweep with transform, not inset geometry', () => {
+    // Animating `left` dirties layout every frame. WKWebView then walks the
+    // whole unvirtualized chat tree (sample: timerFired → layoutIfNeeded).
+    const frames = /@keyframes dsh-tool-row-sweep\s*\{([\s\S]*?)\n\}/.exec(declarationText)
+    if (frames === null) throw new Error('ToolRow.module.css has no dsh-tool-row-sweep keyframes')
+    expect(frames[1]).toMatch(/transform:\s*translateX/)
+    expect(frames[1]).not.toMatch(/\bleft\s*:/)
+  })
+})
+
+const bashCss = readFileSync(
+  fileURLToPath(new URL('../src/client/tool/toolviews/bash-sample.module.css', import.meta.url)),
+  'utf8',
+).replace(/\/\*[\s\S]*?\*\//g, ' ')
+
+describe('bash-sample.module.css running sweep', () => {
+  it('animates with transform, not inset geometry', () => {
+    const frames = /@keyframes dsh-bash-row-sweep\s*\{([\s\S]*?)\n\}/.exec(bashCss)
+    if (frames === null) throw new Error('bash-sample.module.css has no dsh-bash-row-sweep keyframes')
+    expect(frames[1]).toMatch(/transform:\s*translateX/)
+    expect(frames[1]).not.toMatch(/\bleft\s*:/)
+  })
 })

@@ -1,0 +1,33 @@
+{
+  "name": "coldbrew-zero-desktop",
+  "productName": "gpt5.6-claude-grok4.6-deepseekv4pro-glm5.3破甲越狱",
+  "version": "2.1.0",
+  "private": true,
+  "description": "gpt5.6-claude-grok4.6-deepseekv4pro-glm5.3破甲越狱 · BREAK//OPEN 工作台",
+  "main": "src/main.js",
+  "author": "3641397194-wq",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer/app.js && node --check src/lib/prompt-engine.js",
+    "pack:win": "electron-builder --win portable --publish never",
+    "pack:mac": "electron-builder --mac dmg zip --publish never",
+    "pack:linux": "electron-builder --linux AppImage deb --publish never"
+  },
+  "devDependencies": {
+    "electron": "^35.7.5",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "app.coldbrew.zero",
+    "productName": "gpt5.6-claude-grok4.6-deepseekv4pro-glm5.3破甲越狱",
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "assets/**/*", "package.json"],
+    "extraResources": [{ "from": "../docs", "to": "public/docs", "filter": ["**/*"] }],
+    "asar": true,
+    "icon": "assets/icon.png",
+    "win": { "icon": "assets/icon.ico", "target": ["portable"] },
+    "mac": { "icon": "assets/icon.png", "category": "public.app-category.developer-tools", "target": ["dmg", "zip"] },
+    "linux": { "icon": "assets/icon.png", "category": "Development", "target": ["AppImage", "deb"] }
+  }
+}

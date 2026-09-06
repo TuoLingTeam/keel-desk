@@ -181,6 +181,9 @@ fn start_harness(state: &Arc<Mutex<HarnessProcess>>, window: &WebviewWindow) -> 
         .arg(&overlay)
         .args(["--host", "127.0.0.1", "--port", "0"])
         .current_dir(&runtime.root)
+        .env_remove("NODE_OPTIONS")
+        .env_remove("NODE_PATH")
+        .env("UV_USE_IO_URING", "0")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(Stdio::null());
@@ -380,6 +383,20 @@ fn bundled_runtime(path: PathBuf, node: PathBuf) -> Result<RuntimePaths, String>
     })
 }
 
+/// 插件开关读用户目录里的 `desktop-settings.json`；文件还不存在时才回落到
+/// 安装树/仓库根里的旧位置，避免换版本整包替换把勾选冲掉。
+fn desktop_settings_path(plugin_directory: &Path) -> PathBuf {
+    let user = crate::usage::dsh_home().join("desktop-settings.json");
+    if user.exists() {
+        return user;
+    }
+    plugin_directory
+        .parent()
+        .and_then(Path::parent)
+        .map(|root| root.join("desktop-settings.json"))
+        .unwrap_or(user)
+}
+
 fn checked_plugin(path: PathBuf) -> Result<PathBuf, String> {
     if !has_content(&path) {
         return Err(format!(
@@ -412,6 +429,26 @@ fn checked_plugins(
             shared_root.join("dsh-model-capabilities"),
         ),
         (
+            "dsh-quick-commands",
+            "dsh-quick-commands",
+            shared_root.join("dsh-quick-commands"),
+        ),
+        (
+            "dsh-layered-memory",
+            "dsh-layered-memory",
+            shared_root.join("dsh-layered-memory"),
+        ),
+        (
+            "dsh-retry",
+            "dsh-retry",
+            shared_root.join("dsh-retry"),
+        ),
+        (
+            "dsh-open-external",
+            "dsh-open-external",
+            shared_root.join("dsh-open-external"),
+        ),
+        (
             "dsh-desktop-manager",
             "@deepseek-ai/dsh-desktop-manager",
             desktop_root.join("dsh-manager"),
@@ -426,7 +463,7 @@ fn checked_plugins(
     .filter(|(id, _, directory)| {
         if *id == "dsh-infinite-gen-1" {
             // Check if installed and enabled.
-            let settings_path = directory.parent().unwrap().parent().unwrap().join("desktop-settings.json");
+            let settings_path = desktop_settings_path(directory);
             if let Ok(content) = std::fs::read_to_string(settings_path) {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                     if json["plugins"]["dsh-infinite-gen-1"]["enabled"] == false {

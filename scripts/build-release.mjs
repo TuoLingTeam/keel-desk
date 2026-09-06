@@ -41,6 +41,30 @@ const bundledPlugins = [
     directory: "dsh-model-capabilities",
   },
   {
+    id: "dsh-quick-commands",
+    packageName: "dsh-quick-commands",
+    root: "plugins",
+    directory: "dsh-quick-commands",
+  },
+  {
+    id: "dsh-layered-memory",
+    packageName: "dsh-layered-memory",
+    root: "plugins",
+    directory: "dsh-layered-memory",
+  },
+  {
+    id: "dsh-retry",
+    packageName: "dsh-retry",
+    root: "plugins",
+    directory: "dsh-retry",
+  },
+  {
+    id: "dsh-open-external",
+    packageName: "dsh-open-external",
+    root: "plugins",
+    directory: "dsh-open-external",
+  },
+  {
     id: "dsh-desktop-manager",
     packageName: "@deepseek-ai/dsh-desktop-manager",
     root: "desktop-plugins",
@@ -538,6 +562,9 @@ async function smokeRuntime() {
         if (!body.includes("dsh-desktop-manager")) {
           throw new Error("Harness smoke manifest is missing the desktop manager bundle.");
         }
+        if (!body.includes("dsh-layered-memory")) {
+          throw new Error("Harness smoke manifest is missing the layered memory bundle.");
+        }
         // dsh-infinite-gen-1 is a Host-only prompt plugin: its package.json
         // declares `dsh.bundle` and no `dsh.client`, so it correctly never
         // appears in the browser boot manifest. Assert it shipped instead.
@@ -644,6 +671,36 @@ async function buildTauri() {
   if (!(await pathExists(tauriExecutable))) {
     throw new Error(`Tauri executable was not created: ${tauriExecutable}`);
   }
+  if (process.platform === "darwin") {
+    await stableSignMacApp();
+  }
+}
+
+async function stableSignMacApp() {
+  const app = join(bundleRoot, "macos", "DeepSeek Harness.app");
+  if (!(await pathExists(app))) {
+    throw new Error(`macOS app bundle missing: ${app}`);
+  }
+  const script = join(desktopRoot, "scripts", "macos-stable-sign.sh");
+  await run("bash", [script, app], {
+    env: {
+      ...process.env,
+      DSH_ENTITLEMENTS: join(desktopRoot, "src-tauri", "entitlements.plist"),
+      DSH_BUNDLE_ID: "ai.deepseek.harness.desktop",
+      DSH_CODESIGN_CN: "DeepSeek Harness Local",
+    },
+  });
+  const node = join(app, "Contents", "Resources", "runtime", nodeBinaryName);
+  if (!(await pathExists(node))) {
+    throw new Error(`Embedded Node missing after signing: ${node}`);
+  }
+  const entitlementsDump = join(releaseRuntime, "signed-node.entitlements.xml");
+  await run("codesign", ["-d", "--entitlements", entitlementsDump, node], { stdio: "pipe" });
+  const dump = await readFile(entitlementsDump, "utf8").catch(() => "");
+  if (!dump.includes("allow-jit")) {
+    throw new Error("Embedded Node is missing the allow-jit entitlement; V8 will FatalOOM on CodeRange.");
+  }
+  await run(node, ["-e", "console.log('node ok', process.version)"]);
 }
 
 async function publishPortable() {
@@ -729,10 +786,51 @@ async function publishPlatformBundles() {
     return;
   }
   if (process.platform === "darwin") {
-    await publishBundle(".dmg", ".dmg");
+    await publishMacReleasePack();
     return;
   }
   throw new Error(`No native bundle publisher for ${process.platform}`);
+}
+
+async function publishMacReleasePack() {
+  const relDir = "/Volumes/编程工具/发布包";
+  const app = join(bundleRoot, "macos", "DeepSeek Harness.app");
+  if (!(await pathExists(app))) {
+    throw new Error(`macOS app bundle missing: ${app}`);
+  }
+  await mkdir(relDir, { recursive: true });
+  const dmgOut = join(relDir, `${releaseStem}.dmg`);
+  const zipOut = join(relDir, `${releaseStem}-app.zip`);
+  const stage = join(desktopRoot, "dist", `.dmg-stage-${process.pid}`);
+  await rm(stage, { recursive: true, force: true });
+  await mkdir(stage, { recursive: true });
+  await run("ditto", [app, join(stage, "DeepSeek Harness.app")]);
+  await run("ln", ["-s", "/Applications", join(stage, "Applications")]);
+  await rm(dmgOut, { force: true });
+  await run("hdiutil", [
+    "create",
+    "-volname",
+    "DeepSeek Harness",
+    "-srcfolder",
+    stage,
+    "-ov",
+    "-format",
+    "UDBZ",
+    dmgOut,
+  ]);
+  await rm(stage, { recursive: true, force: true });
+  await rm(zipOut, { force: true });
+  await run("ditto", ["-c", "-k", "--keepParent", app, zipOut]);
+  await writeChecksum(dmgOut);
+  await writeChecksum(zipOut);
+  const dmgStat = await stat(dmgOut);
+  const zipStat = await stat(zipOut);
+  console.log(
+    `[release] 发布包 ready: ${dmgOut} (${(dmgStat.size / 1024 / 1024).toFixed(1)} MiB)`,
+  );
+  console.log(
+    `[release] 发布包 ready: ${zipOut} (${(zipStat.size / 1024 / 1024).toFixed(1)} MiB)`,
+  );
 }
 
 async function writeChecksum(path) {

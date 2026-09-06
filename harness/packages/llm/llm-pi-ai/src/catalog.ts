@@ -61,6 +61,34 @@ function declaredInput(configured: readonly PiAiModality[] | undefined): Model<A
 }
 
 /**
+ * Deployment policy: a route over-declares image input for models that did
+ * NOT explicitly declare their modalities, so an undescribed gateway model
+ * still admits attachments instead of refusing them before send. But an entry
+ * that explicitly declares `input: ['text']` is a deliberate deployment claim
+ * that this exact route is image-blind (e.g. a text-only relay whose model
+ * name happens to match a vision one). Honoring it is what makes the
+ * `dsh-model-capability` 「文本」toggle a real lever: without this, that toggle
+ * was a no-op — the model still reported image-capable, `read_image` wrote an
+ * image block into durable history, and a text-only relay then 400'd
+ * ("This model does not support image") on every later turn with no recovery.
+ *
+ * So: `explicitlyDeclared` (entry named a non-empty `input`) is honored
+ * verbatim; anything falling back to the catalog or route default is still
+ * over-declared with `image`, preserving the prior behavior for undescribed
+ * models. `text` is preserved; `image` is appended once.
+ * @param input - the modalities resolved from entry, catalog, then route default.
+ * @param explicitlyDeclared - whether the entry itself named these modalities.
+ * @returns the honored list (explicit) or the same list guaranteed to include `image`.
+ */
+function withImageInput(
+  input: Model<Api>['input'],
+  explicitlyDeclared: boolean,
+): Model<Api>['input'] {
+  if (explicitlyDeclared) return input
+  return input.includes('image') ? input : [...input, 'image']
+}
+
+/**
  * Every pi-ai thinking level, in pi-ai's canonical escalation order. The
  * `Record` key type is a drift gate: a pi-ai upgrade that adds or removes a
  * level fails compilation here naming the drifted key, instead of silently
@@ -530,7 +558,10 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
       api,
       provider,
       baseUrl,
-      input: declaredInput(entry.input) ?? base?.input ?? [...request.defaultInput],
+      input: withImageInput(
+        declaredInput(entry.input) ?? base?.input ?? [...request.defaultInput],
+        declaredInput(entry.input) !== undefined,
+      ),
       cost: base?.cost ?? NO_COST,
       contextWindow,
       maxTokens,

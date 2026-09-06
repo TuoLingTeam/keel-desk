@@ -11,17 +11,31 @@
 // Render economics: order changes only when rows enter, leave or move. Each
 // ChatNodeSeat subscribes to one Node key, so Assistant deltas and Tool
 // lifecycle updates replace only their own row without remounting it.
+// Long windows mount only the visible slice (plus overscan) through
+// @tanstack/react-virtual; find-in-page temporarily mounts the full window
+// so the existing DOM scanner still sees every loaded Node.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type { ConversationTimelineSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { PendingSteeringBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
+import { ChatNav, buildOutline } from './ChatNav.tsx'
 import { formatRunDuration } from './message-chrome.ts'
 import css from './ChatView.module.css'
 
 const FOLLOW_THRESHOLD = 24
+const VIRTUALIZATION_THRESHOLD = 40
+const VIRTUAL_OVERSCAN_ROWS = 12
+const VIRTUAL_ESTIMATE_PX = 88
+const VIRTUAL_INITIAL_VIEWPORT_HEIGHT_PX = 600
+
+type VirtualRowStyle = CSSProperties & {
+  '--chat-virtual-row-offset': string
+}
 
 /** Active column host when present; otherwise the view-local scroller. */
 function scrollerOf(from: HTMLElement): HTMLElement {
@@ -165,9 +179,12 @@ export function ChatView({
     [inbox],
   )
   const runningTurnStart = useMemo(() => runningTurnStartTime(timeline), [timeline])
+  // Sent-message jump list, derived from the same ordered nodes the flow renders.
+  const outline = useMemo(() => buildOutline(order, nodeStore), [order, nodeStore])
 
   const listRef = useRef<HTMLDivElement | null>(null)
   const columnRef = useRef<HTMLDivElement | null>(null)
+  const [findActive, setFindActive] = useState(false)
   const atBottomRef = useRef(true)
   const [atBottom, setAtBottom] = useState(true)
   /** Last position delivered or written on the main thread. */
@@ -191,9 +208,55 @@ export function ChatView({
   const lastSteeringId = pendingSteering[pendingSteering.length - 1]?.id ?? null
   const followSig = `${openState}:${firstSeq}:${lastKey}:${order.length}:${running ? 1 : 0}:${lastSteeringId ?? ''}`
 
+  const virtualizationEnabled = !findActive && order.length > VIRTUALIZATION_THRESHOLD
+  const getScrollElement = useCallback(() => {
+    const local = listRef.current
+    return local === null ? null : scrollerOf(local)
+  }, [])
+  const estimateVirtualRowSize = useCallback(() => VIRTUAL_ESTIMATE_PX, [])
+  const getVirtualRowKey = useCallback(
+    (index: number) => order[index] ?? index,
+    [order],
+  )
+  const rowVirtualizer = useVirtualizer<HTMLElement, HTMLDivElement>({
+    count: virtualizationEnabled ? order.length : 0,
+    enabled: virtualizationEnabled,
+    estimateSize: estimateVirtualRowSize,
+    getItemKey: getVirtualRowKey,
+    getScrollElement,
+    initialRect: { width: 0, height: VIRTUAL_INITIAL_VIEWPORT_HEIGHT_PX },
+    measureElement: (element) => {
+      const height = element.getBoundingClientRect().height
+      return height > 0 ? height : VIRTUAL_ESTIMATE_PX
+    },
+    overscan: VIRTUAL_OVERSCAN_ROWS,
+    scrollEndThreshold: FOLLOW_THRESHOLD,
+  })
+  const virtualItems = virtualizationEnabled ? rowVirtualizer.getVirtualItems() : []
+  const renderedKeys = virtualizationEnabled
+    ? (virtualItems.length > 0
+      ? virtualItems.flatMap((item) => {
+        const key = order[item.index]
+        return key === undefined ? [] : [{ key, index: item.index, start: item.start }]
+      })
+      // A 0-height measure (jsdom, first layout) yields an empty window.
+      // Chat is bottom-anchored, so paint the tail estimate until the
+      // observer reports a real viewport.
+      : order.slice(Math.max(0, order.length - VIRTUAL_OVERSCAN_ROWS)).map((key, offset, window) => {
+        const index = order.length - window.length + offset
+        return { key, index, start: index * VIRTUAL_ESTIMATE_PX }
+      }))
+    : order.map((key, index) => ({ key, index, start: 0 }))
+  const scrollNodeIntoView = useCallback((anchorKey: string) => {
+    const index = order.indexOf(anchorKey)
+    if (!virtualizationEnabled || index < 0) return
+    rowVirtualizer.scrollToIndex(index, { align: 'start' })
+  }, [order, rowVirtualizer, virtualizationEnabled])
+
   const toBottom = (el: HTMLElement): void => {
     anchorRef.current = null
-    el.scrollTop = el.scrollHeight
+    if (virtualizationEnabled) rowVirtualizer.scrollToEnd({ behavior: 'auto' })
+    else el.scrollTop = el.scrollHeight
     observedTopRef.current = el.scrollTop
     atBottomRef.current = true
     setAtBottom(true)
@@ -320,7 +383,8 @@ export function ChatView({
     const local = listRef.current
     if (local !== null && atBottomRef.current) {
       const el = scrollerOf(local)
-      el.scrollTop = el.scrollHeight
+      if (virtualizationEnabled) rowVirtualizer.scrollToEnd({ behavior: 'auto' })
+      else el.scrollTop = el.scrollHeight
       observedTopRef.current = el.scrollTop
       chatScroll.save(null)
     }
@@ -365,7 +429,32 @@ export function ChatView({
   return (
     <div className={css.root}>
       <div ref={listRef} className={css.scroll}>
-        <div ref={columnRef} className={css.column} data-chat-flow="">
+        {/* Find + jump list appear once the conversation has any turn — gated on
+            the timeline (which counts every sent message, even ones still paged
+            out), never on the loaded window, so a long transcript that opens with
+            only recent assistant/tool rows still shows them. */}
+        {timeline.turnOrder.length > 0 && (
+          <ChatNav
+            listRef={listRef}
+            columnRef={columnRef}
+            scrollportOf={scrollerOf}
+            outline={outline}
+            revision={order.length}
+            hasMore={hasMore}
+            loadingOlder={loadingOlder}
+            loadOlder={loadOlder}
+            onFindActiveChange={setFindActive}
+            onRevealAnchor={scrollNodeIntoView}
+            t={t}
+          />
+        )}
+        <div
+          ref={columnRef}
+          className={css.column}
+          data-chat-flow=""
+          data-chat-row-count={order.length}
+          data-chat-virtual={virtualizationEnabled || undefined}
+        >
           {openState === 'loading' && <div className={css.hint}>{t('chat.loadingHistory')}</div>}
           {openState === 'error' && openError !== null && (
             <div className={css.openError}>
@@ -379,22 +468,53 @@ export function ChatView({
               </button>
             </div>
           )}
-          {order.map(nodeKey => (
-            <ChatNodeSeat
-              key={nodeKey}
-              nodeKey={nodeKey}
-              useSession={useSession}
-              selectedCallId={selectedCallId}
-              cwd={cwd}
-              openFile={openFile}
-              inspectCall={inspectCall}
-              forkAt={forkAt}
-              loadImage={loadImage}
-              fileMentions={fileMentions}
-              renderSlot={renderSlot}
-              t={t}
-            />
-          ))}
+          {virtualizationEnabled
+            ? (
+              <div
+                className={css.virtualList}
+                style={{ height: rowVirtualizer.getTotalSize() }}
+              >
+                {renderedKeys.map(({ key, index, start }) => (
+                  <div
+                    key={key}
+                    data-index={index}
+                    ref={rowVirtualizer.measureElement}
+                    className={css.virtualRow}
+                    style={{ '--chat-virtual-row-offset': `${String(start)}px` } as VirtualRowStyle}
+                  >
+                    <ChatNodeSeat
+                      nodeKey={key}
+                      useSession={useSession}
+                      selectedCallId={selectedCallId}
+                      cwd={cwd}
+                      openFile={openFile}
+                      inspectCall={inspectCall}
+                      forkAt={forkAt}
+                      loadImage={loadImage}
+                      fileMentions={fileMentions}
+                      renderSlot={renderSlot}
+                      t={t}
+                    />
+                  </div>
+                ))}
+              </div>
+            )
+            : renderedKeys.map(({ key }) => (
+              <ChatNodeSeat
+                key={key}
+                nodeKey={key}
+                useSession={useSession}
+                selectedCallId={selectedCallId}
+                cwd={cwd}
+                openFile={openFile}
+                inspectCall={inspectCall}
+                forkAt={forkAt}
+                loadImage={loadImage}
+                fileMentions={fileMentions}
+                renderSlot={renderSlot}
+                t={t}
+              />
+            ))}
           {/* No pending placeholders: questions (ui-user-questions) and approvals
               (ApprovalPanel) both take over the composer, so a flow card would
               double-render the same wait. */}

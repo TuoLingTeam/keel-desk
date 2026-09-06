@@ -20,6 +20,8 @@
   },
   "bundle": {
     "macOS": {
+      "infoPlist": "Info.plist",
+      "entitlements": "entitlements.plist",
       "signingIdentity": "-"
     }
   }

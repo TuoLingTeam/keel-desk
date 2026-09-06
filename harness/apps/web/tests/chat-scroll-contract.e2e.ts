@@ -259,6 +259,8 @@ function scrollGeometry(page: Page): Promise<ScrollGeometry> {
  * @returns the number of mounted chat flow rows.
  */
 async function loadedFlowRows(page: Page): Promise<number> {
+  const raw = await page.locator('[data-chat-flow]').getAttribute('data-chat-row-count')
+  if (raw !== null && /^\d+$/.test(raw)) return Number(raw)
   return page.locator('[data-chat-flow-key]').count()
 }
 
@@ -534,11 +536,15 @@ describe('web e2e: long Chat scroll contract', () => {
         additionalPages += 1
       }
       expect(additionalPages).toBeGreaterThan(0)
-      // The whole log is loaded: turn 1's unique marker renders in the
-      // transcript (scoped: the sidebar search row also carries it) and no
-      // page remains.
-      expect(await world.page.locator('[data-conversation-scroll]')
-        .getByText(HISTORY_FIXTURE.markers.user(1), { exact: false }).count()).toBe(1)
+      // The whole log is loaded: turn 1 is reachable at the history start
+      // (virtualization may unmount it while the viewport sits on the tail)
+      // and no page remains.
+      await wheelToHistoryStart(world.page)
+      await expect.poll(
+        () => world.page.locator('[data-conversation-scroll]')
+          .getByText(HISTORY_FIXTURE.markers.user(1), { exact: false }).count(),
+        { timeout: 15_000 },
+      ).toBe(1)
       expect(await world.page.getByRole('button', { name: 'Load earlier', exact: true }).count()).toBe(0)
       assertClean(world)
     })

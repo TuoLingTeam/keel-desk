@@ -17,7 +17,9 @@ import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-api-remotes/
 import type { SelectionTarget } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
-import { terminalCardModel, terminalFailed } from '../src/client/tool/models/terminal-card-model.ts'
+import {
+  CHAT_TERMINAL_MAX_LINES, terminalCardModel, terminalFailed,
+} from '../src/client/tool/models/terminal-card-model.ts'
 import { createChatStore } from '@deepseek-ai/dsh-client-ui-conversation/src/client/stores.ts'
 import { GenericToolCard, type GenericToolCardProps } from '../src/client/tool/toolviews/GenericToolCard.tsx'
 import { DetailsPanel } from '@deepseek-ai/dsh-client-ui-conversation/src/client/skeleton/DetailsPanel.tsx'
@@ -72,6 +74,10 @@ const settled = (over?: Partial<ToolResultNode>): ToolResultNode => ({
 })
 
 describe('terminalCardModel', () => {
+  it('caps the chat-row terminal body tighter than the details panel', () => {
+    expect(CHAT_TERMINAL_MAX_LINES).toBeLessThan(16)
+  })
+
   it('derives a running card from the call view alone', () => {
     expect(terminalCardModel(running({ callView: callTerminal({ cwd: '/projects/app' }) }))).toEqual({
       description: 'List files',
@@ -262,15 +268,16 @@ describe('chat row terminal body', () => {
     expect(view.queryByText(/"command"/)).toBeNull()
   })
 
-  it('a long output renders in full — the scroll container replaces the middle collapse', () => {
+  it('a long output collapses the middle on the chat row, matching the read/diff caps', () => {
     const lines = Array.from({ length: 20 }, (_, i) => `line-${i}`)
     const view = render(<GenericToolCard {...ownerProps(settled({
       resultView: resultTerminal({ output: `${lines.join('\n')}\n` }),
     }))} />)
     toggleRow(view)
-    expect(view.getByText('line-5')).toBeTruthy()
+    expect(view.getByText('line-0')).toBeTruthy()
     expect(view.getByText('line-19')).toBeTruthy()
-    expect(view.queryByText(/其余/)).toBeNull()
+    expect(view.queryByText('line-5')).toBeNull()
+    expect(view.getByText(/其余 12 行/)).toBeTruthy()
   })
 
   it('renders a multi-line command as one prompt row per line', () => {

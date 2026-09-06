@@ -49,6 +49,7 @@
   "license": "MIT",
   "dependencies": {
     "@deepseek-ai/dsh-settings": "workspace:^",
+    "@tanstack/react-virtual": "^3.14.9",
     "clsx": "^2.0.0",
     "@deepseek-ai/schemastery": "workspace:^"
   },
@@ -73,7 +74,8 @@
     "@deepseek-ai/dsh-session-stats": "workspace:^",
     "@deepseek-ai/dsh-token-meter": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^",
-    "react": "^18.2.0"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
@@ -104,7 +106,9 @@
     "@deepseek-ai/dsh-tool-todo": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^",
     "@types/react": "~18.3.1",
-    "react": "^18.2.0"
+    "@types/react-dom": "~18.3.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "files": [
     "lib/index.js",

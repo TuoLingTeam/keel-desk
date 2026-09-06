@@ -176,7 +176,7 @@ pub fn boot_theme_preference() -> Option<String> {
     None
 }
 
-fn dsh_home() -> PathBuf {
+pub(crate) fn dsh_home() -> PathBuf {
     if let Some(configured) = std::env::var_os("DSH_HOME") {
         let raw = configured.to_string_lossy().trim().to_string();
         if !raw.is_empty() && raw != "~" {
@@ -187,10 +187,23 @@ fn dsh_home() -> PathBuf {
     home().join(".dsh")
 }
 
+/// 用户主目录。Windows 上没有 `HOME`，用 `USERPROFILE`，再退到
+/// `HOMEDRIVE` + `HOMEPATH`——否则挂件在 Windows 上根本找不到 `~/.dsh`。
 fn home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
+    if let Some(unix) = std::env::var_os("HOME") {
+        return PathBuf::from(unix);
+    }
+    if let Some(windows) = std::env::var_os("USERPROFILE") {
+        return PathBuf::from(windows);
+    }
+    match (std::env::var_os("HOMEDRIVE"), std::env::var_os("HOMEPATH")) {
+        (Some(drive), Some(path)) => {
+            let mut home = PathBuf::from(drive);
+            home.push(path);
+            home
+        }
+        _ => PathBuf::from("."),
+    }
 }
 
 /// 从 Harness 自己的凭据文件里取密钥，避免在本应用里再存一份。
@@ -219,29 +232,17 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// 本地当天 00:00 的毫秒时间戳。用本地时区而非 UTC，才能和控制台（GMT+8）对得上。
-fn local_midnight_ms() -> u64 {
-    let now = now_ms();
-    let offset_secs = local_utc_offset_secs();
-    let local = now as i64 + offset_secs * 1000;
-    let day = local - local.rem_euclid(86_400_000);
-    (day - offset_secs * 1000).max(0) as u64
-}
-
-/// 通过比较本地时间与 UTC 的日历差推出时区偏移，避免引入 chrono 依赖。
-fn local_utc_offset_secs() -> i64 {
-    // `date +%z` 是 POSIX 下最省事且始终正确（含夏令时）的取法。
-    let output = std::process::Command::new("date").arg("+%z").output().ok();
-    let Some(output) = output else { return 0 };
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if text.len() < 5 {
-        return 0;
+/// 「今天」从哪一刻算起。
+///
+/// 本地时区（含夏令时）在 Rust 标准库里没有可移植的取法，而调用 `date +%z`
+/// 只在类 Unix 上成立，Windows 的 `date` 是另一个完全不同的命令。所以边界由
+/// 前端算好传进来——浏览器有完整的时区库——这里只在缺参时退到 UTC 当天。
+fn day_start_ms(provided: Option<u64>) -> u64 {
+    if let Some(since) = provided {
+        return since;
     }
-    let sign = if text.starts_with('-') { -1 } else { 1 };
-    let digits = &text[1..];
-    let hours: i64 = digits[0..2].parse().unwrap_or(0);
-    let minutes: i64 = digits[2..4].parse().unwrap_or(0);
-    sign * (hours * 3600 + minutes * 60)
+    let now = now_ms();
+    now - now % 86_400_000
 }
 
 fn balance_string(value: &serde_json::Value, key: &str) -> String {
@@ -399,8 +400,8 @@ fn todays_session_logs(since_ms: u64) -> Vec<PathBuf> {
 }
 
 /// 统计今日用量。
-fn collect_today() -> TodayUsage {
-    let since = local_midnight_ms();
+fn collect_today(day_start: Option<u64>) -> TodayUsage {
+    let since = day_start_ms(day_start);
     let mut totals: HashMap<String, ModelUsage> = HashMap::new();
     for log in todays_session_logs(since) {
         scan_session(&log, since, &mut totals);
@@ -434,7 +435,7 @@ fn collect_today() -> TodayUsage {
 }
 
 /// 采一次完整快照。余额与用量互不阻塞：一边失败仍返回另一边。
-pub fn snapshot() -> UsageSnapshot {
+pub fn snapshot(day_start: Option<u64>) -> UsageSnapshot {
     let key = read_api_key();
     let mut snapshot = UsageSnapshot {
         has_key: key.is_some(),
@@ -451,7 +452,7 @@ pub fn snapshot() -> UsageSnapshot {
                 Some("未在 ~/.dsh/.credentials.yaml 找到 DEEPSEEK_API_KEY".into());
         }
     }
-    snapshot.today = collect_today();
+    snapshot.today = collect_today(day_start);
     snapshot
 }
 
@@ -546,7 +547,7 @@ mod tests {
     #[test]
     #[ignore = "reads the developer's own session logs"]
     fn prints_todays_real_usage() {
-        let today = collect_today();
+        let today = collect_today(None);
         println!("today: requests={} billed={}", today.requests, today.billed_tokens);
         println!(
             "  input={} cacheRead={} output={} hit={:?} cost={:?}",
@@ -562,10 +563,10 @@ mod tests {
     }
 
     #[test]
-    fn local_midnight_is_at_a_day_boundary_in_local_time() {
-        let midnight = local_midnight_ms();
-        let offset = local_utc_offset_secs() * 1000;
-        assert_eq!((midnight as i64 + offset).rem_euclid(86_400_000), 0);
-        assert!(midnight <= now_ms());
+    fn day_start_prefers_the_caller_boundary_and_falls_back_to_utc() {
+        assert_eq!(day_start_ms(Some(1_234_567_000)), 1_234_567_000);
+        let utc = day_start_ms(None);
+        assert_eq!(utc % 86_400_000, 0);
+        assert!(utc <= now_ms());
     }
 }

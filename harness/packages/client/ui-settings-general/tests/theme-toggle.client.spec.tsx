@@ -20,6 +20,8 @@ afterEach(cleanup)
 
 const COPY: Record<string, string> = {
   'theme': 'Theme',
+  'theme.light': 'Light',
+  'theme.dark': 'Dark',
   'theme.toLight': 'Switch to the light theme',
   'theme.toDark': 'Switch to the dark theme',
 }
@@ -96,12 +98,16 @@ async function bench(theme?: { service: unknown }) {
 }
 
 describe('ThemeToggle', () => {
-  it('shows icon and label when wide, icon only on the rail', () => {
+  it('shows the current-scheme label when wide, icon only on the rail', () => {
     mount('light')
-    expect(screen.queryByText('Theme')).not.toBeNull()
+    // 宽栏文案随当前主题显示：浅色时是 Light，深色时是 Dark（不再是固定的 Theme）。
+    expect(screen.queryByText('Light')).not.toBeNull()
+    cleanup()
+    mount('dark')
+    expect(screen.queryByText('Dark')).not.toBeNull()
     cleanup()
     mount('light', false)
-    expect(screen.queryByText('Theme')).toBeNull()
+    expect(screen.queryByText('Light')).toBeNull()
     expect(screen.getByRole('button')).toBeDefined()
   })
 

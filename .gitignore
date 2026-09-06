@@ -11,3 +11,4 @@ src-tauri/target-link-fix/
 *.log
 desktop-settings.json
 coldbrew-sessions.json
+=9.2

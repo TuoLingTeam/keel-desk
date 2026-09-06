@@ -9,6 +9,8 @@ export const zh = {
   'openDocument.error': '无法打开配置文件',
   'general.nav': '通用设置',
   'theme': '主题',
+  'theme.light': '浅色',
+  'theme.dark': '深色',
   'theme.toLight': '切换到浅色主题',
   'theme.toDark': '切换到深色主题',
 } satisfies Record<string, string>
@@ -25,6 +27,8 @@ export const en = {
   'openDocument.error': 'Could not open configuration file',
   'general.nav': 'General',
   'theme': 'Theme',
+  'theme.light': 'Light',
+  'theme.dark': 'Dark',
   'theme.toLight': 'Switch to the light theme',
   'theme.toDark': 'Switch to the dark theme',
 } satisfies Record<SettingsKey, string>

@@ -53,8 +53,8 @@ fn restart_harness(state: tauri::State<'_, SharedHarness>, window: tauri::Webvie
 /// 标题栏用量挂件的数据源。余额要走网络、用量要解压会话日志，都不能占用 UI 线程，
 /// 所以放到 blocking 线程池里跑。
 #[tauri::command]
-async fn usage_snapshot() -> Result<usage::UsageSnapshot, String> {
-    tauri::async_runtime::spawn_blocking(usage::snapshot)
+async fn usage_snapshot(day_start: Option<u64>) -> Result<usage::UsageSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(move || usage::snapshot(day_start))
         .await
         .map_err(|error| format!("采集用量快照失败：{error}"))
 }

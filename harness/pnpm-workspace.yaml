@@ -73,6 +73,7 @@ minimumReleaseAgeExclude:
   - node-addon-require-builtin-win32-ia32-msvc@0.1.4
   - node-addon-require-builtin-win32-x64-msvc@0.1.4
   - node-addon-require-builtin@0.1.4
+  - '@rolldown/binding-openharmony-arm64@1.2.6'
 
 patchedDependencies:
   node-pty@1.1.0: patches/node-pty@1.1.0.patch

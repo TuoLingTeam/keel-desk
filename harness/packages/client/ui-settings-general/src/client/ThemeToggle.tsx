@@ -49,7 +49,7 @@ export function ThemeToggle({ wide, t, useColorScheme, toggle }: ThemeToggleProp
       onClick={toggle}
     >
       <Icon size={wide ? 16 : 18} />
-      {wide && <span className={css.label}>{t('theme')}</span>}
+      {wide && <span className={css.label}>{t(dark ? 'theme.dark' : 'theme.light')}</span>}
     </button>
   )
 }

@@ -14,6 +14,14 @@ import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallBlock } from './tool-call-model.ts'
 
 /**
+ * Content lines the chat row's resident terminal body shows before collapsing
+ * the middle — half the primitive's own default, which the details panel keeps.
+ * Matches {@link CHAT_READ_MAX_LINES} / {@link CHAT_DIFF_MAX_LINES} so a long
+ * command output cannot inflate the unvirtualized (or windowed) transcript.
+ */
+export const CHAT_TERMINAL_MAX_LINES = 8
+
+/**
  * Build the TerminalBlock display copy from the conversation locale seat —
  * the one place the primitive's label surface pairs with this package's
  * dictionary, shared by every terminal render site (chat row, bash row,

@@ -323,10 +323,10 @@ npx tsc --noEmit
 
 | 需求 | 落地 | 文件 |
 |---|---|---|
-| 拉取并 vendor 项目 | 整仓（去 .git）拷入 `coldbrew/`；四个 profile 提示词由原仓 profile_engine 生成后放入插件资源 | `coldbrew/`、`desktop-plugins/dsh-manager/src/profiles/*.md` |
-| 按会话注入系统提示词 | `dsh-manager` host 注册 `systemPrompt.section('coldbrew:session-profile', order 150)`，text 提供器按 `AssembleContext.scope.id`（=agent=会话）读 `coldbrew-sessions.json`，开启且模型命中时返回对应 profile 正文，否则返回空串（不贡献内容） | `desktop-plugins/dsh-manager/src/index.mjs` |
-| 模型名 → profile | `matchProfileId()`：gpt/codex/o1/o3→codex；claude→claude；grok→grok；其余（含 deepseek-v4-*）→deepseek | 同上 |
-| webServer API | `/api/coldbrew/profiles`（GET）、`/api/coldbrew/profile/:id`（POST 默认开启）、`/api/coldbrew/session/:id`（GET/POST 会话开关）；状态落盘 `coldbrew-sessions.json`，profile 默认写入 `desktop-settings.json` 的 `coldbrew.profiles` | 同上 |
+| 拉取并 vendor 项目 | 整仓（去 .git）拷入 `coldbrew/`；2.1.0 共用 BREAK//OPEN 内核 + 五个席位 overlay | `coldbrew/`、`desktop-plugins/dsh-manager/src/profiles/kernel-2.1.0.md`、`profiles/{codex,claude,grok,deepseek,glm}.md` |
+| 按会话注入系统提示词 | `dsh-manager` host 注册 `systemPrompt.section('coldbrew:session-profile', order 150)`，text 提供器按 `AssembleContext.scope.id`（=agent=会话）读 `$DSH_HOME/coldbrew-sessions.json`，开启且模型命中时返回对应 profile 正文，否则返回空串（不贡献内容） | `desktop-plugins/dsh-manager/src/index.mjs` |
+| 模型名 → profile | `matchProfileId()`：gpt/codex/o1/o3→codex；claude→claude；grok→grok；glm/chatglm/zhipu→glm；其余（含 deepseek-v4-*）→deepseek | 同上 |
+| webServer API | `/api/coldbrew/profiles`（GET）、`/api/coldbrew/profile/:id`（POST 默认开启）、`/api/coldbrew/session/:id`（GET/POST 会话开关）；状态落盘 `$DSH_HOME/coldbrew-sessions.json`，profile 默认写入 `$DSH_HOME/desktop-settings.json` 的 `coldbrew.profiles`。安装树里的同名旧文件只在用户目录尚无文件时迁移一次，换版本不得覆盖用户勾选 | 同上 |
 | 工具 | `coldbrew_profiles` 工具返回四个 profile 元数据+正文（与 `infinite_gen1_profile` 同型） | 同上 |
 | 输入框开关 | client 注册 `conversation.input.left` 槽位 `ColdBrewToggle`：`session.blank===true` 才可切换；通过 `modelDirectories` 服务读当前模型，展示将匹配的 profile；切换 POST 到 host | `desktop-plugins/dsh-manager/src/client.tsx` |
 | 面板换新 | `settings.section` 的 `desktop-manager` 面板改为冷咖啡四模型工作台：四个 profile 卡片（默认开关）+ 后端运行状态 + 重启 | 同上 |
@@ -351,3 +351,35 @@ systemPrompt section 文本提供器 mock 验证：开启+grok→Grok 正文、�
 - `dsh-model-capabilities/test/client.test.mjs` 有一条**既有失败**（selectionOf 期望
   `inherit` 实际 `text-image`），与本次改动无关（该插件目录未动过），提交时原样保留。
 - 面板与输入框开关的实际视觉效果需在新 app 里人眼过一遍。
+
+---
+
+## 记忆功能（dsh-layered-memory）
+
+对照 `fn-deepseek-harness` 里提到、上游仓库 [JunNanLYS/dsh-layered-memory](https://github.com/JunNanLYS/dsh-layered-memory) 的分层记忆插件，复刻进 Desktop：
+
+| 面 | 落地 |
+|---|---|
+| Host | `plugins/dsh-layered-memory`：L0 捕获、L1–L3 蒸馏、pre-step 召回注入、`dsh-memory/*` RPC |
+| Client | 设置 → **记忆** 五区工作台 + 输入栏「记忆 · 智能」芯片 + 待蒸馏遥测 |
+| rc.5 适配 | `rpc.handle('/rpc', handler, { authority: 'loopback' })`；芯片从 `InputZone.session.sessionId` 取会话 |
+| UI | 内容卡去掉描边，分层走 `--dsw-alias-bg-layer-2`；总览不再重复四个跳转按钮 |
+| 打包 | `scripts/build-release.mjs` 与 `src-tauri/src/harness.rs` 的 bundled plugins 列表已挂上 |
+
+数据在 `~/.dsh/memory/`。jieba / sqlite-vec / undici 缺失时降级，不拖垮宿主。
+
+---
+
+## 7. Reverify 模式（冷咖啡旁路，不替换）
+
+设置 → 破甲管理 增加可切换工作模式：
+
+| 模式 | 注入 | 工具 |
+|---|---|---|
+| 冷咖啡 ColdBrew 2.1.0 | 原 BREAK//OPEN 内核 + 五席位 overlay | `coldbrew_profiles` |
+| Reverify 0.9.0 | `kernel-reverify.md` + `{seat}-reverify.md` | `re_auto_triage` / `re_parse` / `re_parse_pe` / `re_backends` / `re_pattern_scan` / `re_disasm` / `re_verify_claim` / `re_semantic` / `re_ledger` |
+
+- 冷咖啡正文、席位 overlay、输入框开关全部保留。`coldbrew.armorMode` 写在 `$DSH_HOME/desktop-settings.json`；会话可覆盖 `mode`。
+- Reverify 0.9.0（commit `f80dc1a080de`）vendored 在 `desktop-plugins/dsh-manager/vendor/reverify`，随插件打进 `lib/`。host 用本机 Python 3.8+ 调 `reverify-bridge.py` → `handle_tool_call`，不要求全局 `pip install reverify`。
+- 「一键安装引擎」把 capstone/unicorn/lief/z3 装进 `~/.dsh/reverify-venv`；「安装 angr」同目录。任何机器有系统 Python 就能用纯核心；extras 可选。
+- GPT / Claude / Grok / GLM / DeepSeek 五席位共用同一套 `re_*` 工具与内核，只换语气 overlay。

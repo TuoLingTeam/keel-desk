@@ -445,6 +445,18 @@ describe('ChatView', () => {
       ])
   })
 
+  it('windows a long loaded order instead of mounting every Node', () => {
+    const nodes = Array.from({ length: 48 }, (_, index) => user(index + 1, `row ${String(index + 1)}`))
+    const h = makeHarness({ nodes })
+    const view = render(<h.ChatView {...h.props} />)
+    const flow = view.container.querySelector('[data-chat-flow]') as HTMLElement
+    expect(flow.getAttribute('data-chat-row-count')).toBe('48')
+    expect(flow.getAttribute('data-chat-virtual')).toBe('true')
+    const mounted = view.container.querySelectorAll('[data-chat-flow-key]').length
+    expect(mounted).toBeGreaterThan(0)
+    expect(mounted).toBeLessThan(48)
+  })
+
   it('renders Host-pending steering at the flow tail and hands off to the durable node', () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', {

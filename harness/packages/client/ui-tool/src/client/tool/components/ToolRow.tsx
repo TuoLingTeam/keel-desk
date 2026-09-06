@@ -27,7 +27,9 @@ import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { CHAT_DIFF_MAX_LINES, type DiffCardModel } from '../models/diff-card-model.ts'
 import { CHAT_READ_MAX_LINES, type ReadCardModel } from '../models/read-card-model.ts'
 import { CHAT_SEARCH_MAX_LINES, type SearchCardModel } from '../models/search-card-model.ts'
-import { terminalBlockLabels, type TerminalCardModel } from '../models/terminal-card-model.ts'
+import {
+  CHAT_TERMINAL_MAX_LINES, terminalBlockLabels, type TerminalCardModel,
+} from '../models/terminal-card-model.ts'
 import type { ToolRowState, ToolRowVariant } from '../models/tool-call-model.ts'
 import css from './ToolRow.module.css'
 
@@ -238,7 +240,7 @@ export function ToolRow({
             ? (
               <TerminalBlock
                 {...terminalBody.card}
-                maxLines={Infinity}
+                maxLines={CHAT_TERMINAL_MAX_LINES}
                 labels={terminalBlockLabels(t)}
                 className={css.terminalBody}
               />

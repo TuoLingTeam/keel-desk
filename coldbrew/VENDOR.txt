@@ -1,0 +1,4 @@
+
+# Vendored from https://github.com/3641397194-wq/gpt5.6-claude-grok4.6-deepseekv4pro
+# commit 3e77df2b36830a644ed15c5d1151da1dff7d2d48
+# VERSION 2.1.0

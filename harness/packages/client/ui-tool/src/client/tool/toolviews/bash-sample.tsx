@@ -10,7 +10,7 @@
 // is the toggle (click / Enter / Space, icon→chevron hover preview; the
 // summary stays inline while open),
 // and the expanded card max-height-scrolls inside its own surface with the
-// full output (maxLines Infinity — no middle collapse). An error row's
+// chat-row height cap (CHAT_TERMINAL_MAX_LINES). An error row's
 // collapsed summary is the failure's first line in the error color.
 
 import { useState, type KeyboardEvent } from 'react'
@@ -21,7 +21,9 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '../../contract/slots.ts'
-import { terminalBlockLabels, terminalCardModel, terminalFailed } from '../models/terminal-card-model.ts'
+import {
+  CHAT_TERMINAL_MAX_LINES, terminalBlockLabels, terminalCardModel, terminalFailed,
+} from '../models/terminal-card-model.ts'
 import { toolRowModel, type ToolRowState } from '../models/tool-call-model.ts'
 import { CONVERSATION_NS as NS } from '../../locale.ts'
 import css from './bash-sample.module.css'
@@ -125,7 +127,7 @@ export function BashRow({ toolName, block, sessionId, useSessions, inspect, t }:
             ? (
               <TerminalBlock
                 {...terminal.card}
-                maxLines={Infinity}
+                maxLines={CHAT_TERMINAL_MAX_LINES}
                 labels={terminalBlockLabels(t)}
                 className={css.terminal}
               />

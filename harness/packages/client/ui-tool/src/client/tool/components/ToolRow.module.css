@@ -14,7 +14,9 @@
 /* Running sweep (deepsuite ShimmerText pattern): a fixed-width glare band —
    theme background at 60% — glides over the row content from off-left to
    off-right, washing glyphs and icon toward the background as it passes.
-   ease-out with a 10% end hold gives each pass a beat before the next. */
+   ease-out with a 10% end hold gives each pass a beat before the next.
+   Transform, not `left`: animating inset geometry dirties layout every
+   frame and WebKit walks the whole unvirtualized chat tree. */
 .root[data-state='running'] .row::after {
   content: '';
   position: absolute;
@@ -22,6 +24,8 @@
   bottom: 0;
   left: 0;
   width: 300px;
+  transform: translateX(-100%);
+  will-change: transform;
   background: linear-gradient(
     90deg,
     transparent 0%,
@@ -33,8 +37,8 @@
 }
 
 @keyframes dsh-tool-row-sweep {
-  0% { left: -300px; }
-  90%, 100% { left: 100%; }
+  0% { transform: translateX(-100%); }
+  90%, 100% { transform: translateX(100vw); }
 }
 
 .leading {
@@ -305,4 +309,11 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root[data-state='running'] .row::after {
+    animation: none;
+    display: none;
+  }
 }

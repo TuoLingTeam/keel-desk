@@ -39,6 +39,16 @@ const HARNESS_THEME_MESSAGE = "deepseek-harness:theme";
 const HARNESS_THEME_REQUEST = "deepseek-harness:theme-request";
 const HARNESS_RELAUNCHING_EVENT = "harness://relaunching";
 
+// External links inside the loopback Harness iframe cannot open themselves in a
+// WKWebView. The dsh-open-external plugin forwards them here (postMessage), and
+// the shell hands them to the system browser via tauri-plugin-opener.
+window.addEventListener("message", (event: MessageEvent) => {
+  const data = event.data as { type?: unknown; url?: unknown } | null;
+  if (data === null || data.type !== "dsh-open-external" || typeof data.url !== "string") return;
+  if (!/^https?:\/\//i.test(data.url)) return;
+  void invoke("plugin:opener|open_url", { url: data.url }).catch(() => {});
+});
+
 // The macOS window keeps its native traffic lights, so the stylesheet needs to
 // know which platform it is dressing before the title bar is first painted.
 if (navigator.userAgent.includes("Mac OS X")) {
@@ -460,7 +470,10 @@ function renderUsageStamp(): void {
 
 async function refreshUsage(): Promise<void> {
   try {
-    renderUsage(await invoke<UsageSnapshotPayload>("usage_snapshot"));
+    // 本地时区（含夏令时）只有浏览器算得准，Rust 侧没有可移植的取法，
+    // 所以「今天」的起点在这里算好再传过去。
+    const dayStart = new Date().setHours(0, 0, 0, 0);
+    renderUsage(await invoke<UsageSnapshotPayload>("usage_snapshot", { dayStart }));
   } catch (reason) {
     console.error("Usage snapshot failed", reason);
     usageNote("usage-usage-error", String(reason));

@@ -91,21 +91,45 @@ const DEFAULT_TESSERACT_COMMAND = 'tesseract'
 const DEFAULT_TESSERACT_LANGUAGES = 'chi_sim+eng'
 
 /**
- * 一个 GUI 应用继承的是 launchd 的最小 PATH，通常只有 `/usr/bin:/bin:/usr/sbin:/sbin`，
- * 不含 Homebrew。靠 PATH 找引擎会让从 Dock 启动的应用误判成「没装 OCR」，
- * 而同一台机器在终端里跑得好好的。所以裸命令名要逐个候选目录去找。
+ * GUI 应用继承的 PATH 往往不含包管理器目录：macOS 从 Dock 启动只有
+ * `/usr/bin:/bin:/usr/sbin:/sbin`，Windows 的服务/快捷方式同样可能缺少
+ * 安装目录。只靠 PATH 会让应用误判成「没装 OCR」，而终端里明明跑得好好的。
+ * 所以裸命令名要逐个候选目录去找，候选表按平台给。
  */
-const COMMAND_SEARCH_DIRS = [
-  '/opt/homebrew/bin',
-  '/usr/local/bin',
-  '/opt/local/bin',
+const WINDOWS = process.platform === 'win32'
+
+const UNIX_SEARCH_DIRS = [
+  '/opt/homebrew/bin', // Apple 芯片 Homebrew
+  '/usr/local/bin', // Intel Homebrew、手工安装
+  '/opt/local/bin', // MacPorts
+  '/home/linuxbrew/.linuxbrew/bin', // Linuxbrew
   '/usr/bin',
+  '/bin',
 ]
 
-/** 把一个命令展开成按优先级排列的候选路径；绝对路径原样返回。 */
+/** Windows 上 tesseract 的常见安装位置；环境变量缺失时用字面回退。 */
+function windowsSearchDirs(): string[] {
+  const programFiles = process.env['ProgramFiles'] ?? 'C:\\Program Files'
+  const programFilesX86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)'
+  const localAppData = process.env['LOCALAPPDATA']
+  return [
+    `${programFiles}\\Tesseract-OCR`,
+    `${programFilesX86}\\Tesseract-OCR`,
+    ...(localAppData === undefined ? [] : [`${localAppData}\\Programs\\Tesseract-OCR`]),
+  ]
+}
+
+/**
+ * 把一个命令展开成按优先级排列的候选路径；已含路径分隔符的原样返回。
+ * Windows 还要补 `.exe`，否则 execFile 找不到。
+ */
 function commandCandidates(command: string): string[] {
-  if (command.includes('/')) return [command]
-  return [...COMMAND_SEARCH_DIRS.map(dir => `${dir}/${command}`), command]
+  if (command.includes('/') || command.includes('\\')) return [command]
+  if (WINDOWS) {
+    const exe = command.endsWith('.exe') ? command : `${command}.exe`
+    return [...windowsSearchDirs().map(dir => `${dir}\\${exe}`), exe, command]
+  }
+  return [...UNIX_SEARCH_DIRS.map(dir => `${dir}/${command}`), command]
 }
 
 const SUFFIX_BY_SUBTYPE: Record<string, string> = {
@@ -171,8 +195,12 @@ export function createImageOcr(options: OcrOptions = {}): ImageOcr {
     const file = join(directory, `image${suffixFor(request.mediaType)}`)
     try {
       await writeFile(file, request.data)
+      // Vision 走的是 macOS 系统框架，其它平台上它不可能存在，试它只会
+      // 拖慢每次识别、并在错误信息里留下误导性的「vision: not installed」。
       const attempts: Array<{ engine: OcrEngine; argv: readonly string[]; command: string }> = [
-        { engine: 'vision', command: visionCommand, argv: [file] },
+        ...(process.platform === 'darwin'
+          ? [{ engine: 'vision' as const, command: visionCommand, argv: [file] }]
+          : []),
         {
           engine: 'tesseract',
           command: tesseractCommand,

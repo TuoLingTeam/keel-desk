@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { CodeBlock } from '../src/markdown/CodeBlock.tsx'
-import { highlightToHtml } from '../src/markdown/highlight.ts'
+import { HIGHLIGHT_MAX_CHARS, highlightToHtml } from '../src/markdown/highlight.ts'
 
 afterEach(cleanup)
 
@@ -30,6 +30,11 @@ describe('highlightToHtml', () => {
   it('returns undefined for unknown or absent languages', () => {
     expect(highlightToHtml('x', 'cobol')).toBeUndefined()
     expect(highlightToHtml('x', undefined)).toBeUndefined()
+  })
+
+  it('returns undefined for sources over the highlight budget', () => {
+    const oversized = `${'const x = 1\n'.repeat(HIGHLIGHT_MAX_CHARS)}`
+    expect(highlightToHtml(oversized, 'typescript')).toBeUndefined()
   })
 
   // Every read-tool language hint whose grammar loads lazily (the boot set —

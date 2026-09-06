@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>DeepSeek Harness 需要「辅助功能」权限，以便读取本机应用界面并代为点击、输入（计算机控制）。授权一次后，后续版本只要还是本应用就不会再反复弹窗。</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>DeepSeek Harness 需要「屏幕录制」权限，以便截取窗口画面核对界面状态。授权一次后，后续版本只要还是本应用就不会再反复弹窗。</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>DeepSeek Harness 需要通过 Apple Events 与其他应用协作（例如激活窗口）。</string>
+	<key>LSFileQuarantineEnabled</key>
+	<false/>
+</dict>
+</plist>

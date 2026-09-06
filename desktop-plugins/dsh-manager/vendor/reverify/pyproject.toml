@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reverify"
+version = "0.9.0"
+description = "Anti-hallucination for AI agents that read binaries: the model proposes, deterministic tools decide. Claims verified or refuted against the real bytes, with evidence; grounded facts survive context resets. MCP server + CLI."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "2akouwu" }]
+keywords = [
+    "anti-hallucination", "hallucination", "grounding", "verification", "llm", "ai-agents",
+    "context-engineering", "mcp", "reverse-engineering", "binary-analysis", "disassembler",
+    "frida", "protobuf", "malware-analysis", "ctf",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+    "Topic :: Software Development :: Disassemblers",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# Mature engines. The pure-Python core always works; these upgrade it in place.
+capstone = ["capstone>=5.0"]   # full-fidelity disassembly (x86/x64/ARM/ARM64)
+unicorn = ["unicorn>=2.0"]     # real CPU emulation
+lief = ["lief>=0.14"]          # PE / ELF / Mach-O parsing
+z3 = ["z3-solver>=4.12"]       # proof-grade expression equivalence (MBA deobfuscation)
+angr = ["angr>=9.2"]           # semantic layer: function boundaries, call graph, xrefs (large; not in [full])
+full = ["capstone>=5.0", "unicorn>=2.0", "lief>=0.14", "z3-solver>=4.12"]
+dev = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://github.com/2akouwu/reverify"
+Repository = "https://github.com/2akouwu/reverify"
+Issues = "https://github.com/2akouwu/reverify/issues"
+
+[project.scripts]
+reverify = "reverify.cli:main"
+reverify-mcp = "reverify.mcp_server:run_mcp_server"
+
+[tool.setuptools]
+packages = ["reverify"]
+
+[tool.setuptools.package-data]
+reverify = ["py.typed"]
