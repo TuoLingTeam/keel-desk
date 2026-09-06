@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { lstat, symlink } from 'node:fs/promises'
 import { access, copyFile, cp, mkdir, readFile, readdir, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -16,6 +17,49 @@ async function pathExists(path) {
   } catch {
     return false
   }
+}
+
+function pnpmInvocation(args) {
+  if (process.env.npm_execpath?.toLowerCase().includes('pnpm')) {
+    return { command: process.execPath, args: [process.env.npm_execpath, ...args] }
+  }
+  if (process.platform === 'win32') {
+    return {
+      command: process.env.ComSpec ?? 'cmd.exe',
+      args: ['/d', '/s', '/c', 'pnpm.cmd', ...args],
+    }
+  }
+  return { command: 'pnpm', args }
+}
+
+function run(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: repositoryRoot,
+      env: process.env,
+      shell: false,
+      stdio: 'inherit',
+    })
+    child.once('error', reject)
+    child.once('exit', (code, signal) => {
+      if (code === 0) resolve()
+      else reject(new Error(`${command} ${args.join(' ')} exited with ${signal ? `signal ${signal}` : `code ${code}`}`))
+    })
+  })
+}
+
+/** Each plugin's scripts/build.mjs imports esbuild from the plugin's own
+ *  node_modules. A fresh checkout — CI in particular — has none installed, and
+ *  plugin:sync only installs the lock-pinned entries, so install here from the
+ *  vendored lockfile before the build script is imported. */
+async function ensurePluginDependencies(root, directory) {
+  if (await pathExists(join(root, 'node_modules'))) return
+  if (!(await pathExists(join(root, 'pnpm-lock.yaml')))) {
+    throw new Error(`${directory}: pnpm-lock.yaml is required to install its build dependencies`)
+  }
+  const invocation = pnpmInvocation(['--dir', root, 'install', '--frozen-lockfile'])
+  await run(invocation.command, invocation.args)
+  console.log(`[plugins] Installed dependencies for ${directory}`)
 }
 
 async function buildDesktopBridge() {
@@ -114,6 +158,7 @@ async function buildPublicPlugins() {
     const buildScript = join(root, 'scripts', 'build.mjs')
     if (await pathExists(buildScript)) {
       await assertStandardBundle(root, entry.name)
+      await ensurePluginDependencies(root, entry.name)
       await import(`${pathToFileURL(buildScript).href}?build=${Date.now()}`)
     } else {
       console.log(`[plugins] Skipping build for non-standard plugin ${entry.name}`)

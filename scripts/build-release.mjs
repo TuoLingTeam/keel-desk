@@ -617,11 +617,14 @@ async function smokeRuntime() {
         );
       }
     });
+    // The bundled runtime now boots nine plugins (layered memory, the desktop
+    // manager, ...) on top of the Harness tree; hosted Windows runners need
+    // noticeably longer than the original 45 s budget to reach the URL line.
     timeout = setTimeout(() => {
       void finish(
         new Error(`Harness smoke timed out.\nstdout:\n${stdout}\nstderr:\n${stderr}`),
       );
-    }, 45_000);
+    }, 120_000);
   });
   await Promise.all([
     rm(join(releaseRuntime, "smoke-home"), { recursive: true, force: true }),

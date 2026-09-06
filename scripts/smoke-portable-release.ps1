@@ -123,7 +123,9 @@ try {
         -WorkingDirectory $portableRoot `
         -PassThru
 
-    $deadline = (Get-Date).AddSeconds(90)
+    # Nine bundled plugins boot on top of the Harness tree; hosted runners need
+    # more than the original 90 s to reach the first HTML response.
+    $deadline = (Get-Date).AddSeconds(180)
     $nodeProcess = $null
     $listener = $null
     $response = $null
@@ -170,7 +172,7 @@ try {
     }
 
     if ($null -eq $response -or $null -eq $nodeProcess -or $null -eq $listener) {
-        throw "Portable desktop application did not expose the Harness page within 90 seconds"
+        throw "Portable desktop application did not expose the Harness page within 180 seconds"
     }
     if ($response.Content -notmatch "data-dsh-desktop-theme-bridge") {
         throw "Packaged Harness HTML is missing the desktop theme bridge"
@@ -339,26 +341,55 @@ try {
     Write-Host "[portable-smoke] Profile resolver package links present"
     Write-Host "[portable-smoke] WebView iframe connection established"
 
+    # Closing the window parks the app in the tray instead of quitting
+    # (src-tauri/src/lib.rs: CloseRequested -> prevent_close + hide), so the
+    # window must disappear while both the shell and its Node child stay alive.
     $nodePid = $nodeProcess.ProcessId
     if (!$app.CloseMainWindow()) {
         throw "Portable desktop application did not accept a normal window close"
     }
-    if (!$app.WaitForExit(15000)) {
-        throw "Portable desktop application did not exit after its window closed"
+    $hideDeadline = (Get-Date).AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 250
+        $app.Refresh()
+        if ($app.HasExited) {
+            throw "Portable desktop application exited on window close instead of parking in the tray"
+        }
+    } while (
+        $app.MainWindowHandle -ne [IntPtr]::Zero -and
+        (Get-Date) -lt $hideDeadline
+    )
+    if ($app.MainWindowHandle -ne [IntPtr]::Zero) {
+        throw "Portable desktop application kept its window visible after close"
     }
-    $nodeDeadline = (Get-Date).AddSeconds(10)
+    if ($null -eq (Get-Process -Id $nodePid -ErrorAction SilentlyContinue)) {
+        throw "Harness Node process died when the window was parked in the tray"
+    }
+    Add-Content -LiteralPath $evidencePath -Encoding utf8 -Value "close_behavior=parked-in-tray"
+    Write-Host "[portable-smoke] Window close parked the app in the tray with Harness still running"
+
+    # The only real quit path is the tray menu, which a script cannot drive, so
+    # tear the process tree down explicitly and make sure nothing is left behind.
+    taskkill.exe /PID $app.Id /T /F | Out-Null
+    $exitDeadline = (Get-Date).AddSeconds(10)
     while (
-        $null -ne (Get-Process -Id $nodePid -ErrorAction SilentlyContinue) -and
-        (Get-Date) -lt $nodeDeadline
+        (
+            $null -ne (Get-Process -Id $app.Id -ErrorAction SilentlyContinue) -or
+            $null -ne (Get-Process -Id $nodePid -ErrorAction SilentlyContinue)
+        ) -and
+        (Get-Date) -lt $exitDeadline
     ) {
         Start-Sleep -Milliseconds 250
     }
-    if ($null -ne (Get-Process -Id $nodePid -ErrorAction SilentlyContinue)) {
-        throw "Harness Node process remained after the desktop window closed"
+    if ($null -ne (Get-Process -Id $app.Id -ErrorAction SilentlyContinue)) {
+        throw "Portable desktop application survived process-tree termination"
     }
-    Add-Content -LiteralPath $evidencePath -Encoding utf8 -Value "shutdown=graceful"
+    if ($null -ne (Get-Process -Id $nodePid -ErrorAction SilentlyContinue)) {
+        throw "Harness Node process remained after the desktop application was terminated"
+    }
+    Add-Content -LiteralPath $evidencePath -Encoding utf8 -Value "shutdown=process-tree-terminated"
     $app = $null
-    Write-Host "[portable-smoke] Graceful shutdown passed"
+    Write-Host "[portable-smoke] Process tree terminated cleanly"
     Write-Host "[portable-smoke] Passed; evidence: $evidencePath"
 } finally {
     if ($null -ne $app) {

@@ -3,10 +3,6 @@ import { lstat, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Desktop integrations are out-of-tree Cordis plugins. Build their Host and
-// browser halves before deciding whether vendored Harness needs rebuilding.
-await import("./build-plugins.mjs");
-
 const desktopRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const harnessRoot = join(desktopRoot, "harness");
 const harnessLockfile = join(harnessRoot, "pnpm-lock.yaml");
@@ -109,6 +105,13 @@ if (dependencyStat === null || dependencyStat.mtimeMs < lockfileStat.mtimeMs) {
   console.log("[harness] Installing vendored Harness dependencies...");
   await runPnpm(["install", "--frozen-lockfile"]);
 }
+
+// Desktop integrations are out-of-tree Cordis plugins. Build their Host and
+// browser halves before deciding whether vendored Harness needs rebuilding.
+// This has to run after the install above: the dsh-manager bundle borrows
+// esbuild from the vendored Harness dependency tree, which a fresh checkout
+// (CI included) does not have yet.
+await import("./build-plugins.mjs");
 
 const artifactStats = await Promise.all(buildArtifacts.map(statOrNull));
 const sourceMtime = await newestSourceMtime(harnessRoot);
