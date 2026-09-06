@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - "v*"
+  # Manual fallback: dispatch on an existing release tag (ref = vX.Y.Z) so the
+  # same version check and asset naming apply when the tag push itself did not
+  # produce a run.
+  workflow_dispatch:
 
 permissions:
   contents: write
