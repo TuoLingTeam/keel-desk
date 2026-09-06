@@ -33,6 +33,13 @@ function Get-Sha256Hex {
     }
 }
 
+Add-Type -Namespace PortableSmoke -Name Native -MemberDefinition @"
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool IsWindow(System.IntPtr hWnd);
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool IsWindowVisible(System.IntPtr hWnd);
+"@ -ErrorAction Stop
+
 $expectedHash = ((Get-Content -LiteralPath $checksumPath -Raw).Trim() -split "\s+")[0]
 $actualHash = Get-Sha256Hex -Path $archive
 if (![string]::Equals($expectedHash, $actualHash, [StringComparison]::OrdinalIgnoreCase)) {
@@ -344,22 +351,26 @@ try {
     # Closing the window parks the app in the tray instead of quitting
     # (src-tauri/src/lib.rs: CloseRequested -> prevent_close + hide), so the
     # window must disappear while both the shell and its Node child stay alive.
+    # Watch the specific HWND: Process.MainWindowHandle happily falls back to
+    # other visible unowned windows of the process (the IME/TSF helper windows
+    # WebView2 creates), so it never returns to zero even after the real window
+    # is hidden.
     $nodePid = $nodeProcess.ProcessId
+    $mainWindow = $app.MainWindowHandle
     if (!$app.CloseMainWindow()) {
         throw "Portable desktop application did not accept a normal window close"
     }
-    $hideDeadline = (Get-Date).AddSeconds(10)
+    $hideDeadline = (Get-Date).AddSeconds(15)
     do {
         Start-Sleep -Milliseconds 250
         $app.Refresh()
         if ($app.HasExited) {
             throw "Portable desktop application exited on window close instead of parking in the tray"
         }
-    } while (
-        $app.MainWindowHandle -ne [IntPtr]::Zero -and
-        (Get-Date) -lt $hideDeadline
-    )
-    if ($app.MainWindowHandle -ne [IntPtr]::Zero) {
+        $stillVisible = [PortableSmoke.Native]::IsWindow($mainWindow) -and
+            [PortableSmoke.Native]::IsWindowVisible($mainWindow)
+    } while ($stillVisible -and (Get-Date) -lt $hideDeadline)
+    if ($stillVisible) {
         throw "Portable desktop application kept its window visible after close"
     }
     if ($null -eq (Get-Process -Id $nodePid -ErrorAction SilentlyContinue)) {
